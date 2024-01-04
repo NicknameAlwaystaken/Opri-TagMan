@@ -15,7 +15,7 @@ class Game:
         self.game_ended = False
         self.guessed_letters = []
         self.current_menu = None
-        self.letter_buttons = []
+        self.letter_buttons: List[LetterButton] = []
         self.menu_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
             PLAY_MENU: {},
             MAIN_MENU: {}
@@ -72,8 +72,8 @@ class Game:
         letter_counter = 0
         margin_y = 20
         margin_x = 20 + (DEFAULT_FONT.size('A')[0] / 2)
-        letter_min_spacing = 10
-        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (DEFAULT_FONT.size('A')[0] + letter_min_spacing)
+        letter_min_x_spacing = 10
+        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (DEFAULT_FONT.size('A')[0] + letter_min_x_spacing)
         letter_row = 0
         letter_column = 0
         letter_x_spacing = (keyboard_rect.size[0] - margin_x * 2) / (letters_per_row - 1)
@@ -86,8 +86,9 @@ class Game:
             if letter_counter % letters_per_row == 0:
                 letter_row += 1
                 letter_column = 0
-                if len(string.ascii_uppercase) - letter_counter < letters_per_row:
-                    next_pos = (letters_per_row - (len(string.ascii_uppercase) - letter_counter)) // 2
+                more_space_than_letters_left = len(self.letter_buttons) - letter_counter < letters_per_row
+                if more_space_than_letters_left:
+                    next_pos = (letters_per_row - (len(self.letter_buttons) - letter_counter)) // 2 # skip towards center
                     letter_column = next_pos
 
     def add_object(self, game_state, object: GameObject):
@@ -188,6 +189,9 @@ class AnswerObject(TextObject):
         self.wrong_guesses = 0
         self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
         self._update_surface()
+
+    def set_text(self, text, color=None):
+        raise NotImplementedError("Setting text/answer to AnswerObject is used with set_answer")
         
     def _update_surface(self):
         color = self.temp_color if self.temp_color is not None else self.color
@@ -200,25 +204,26 @@ class AnswerObject(TextObject):
         correct_answer = self.text.upper()
         guessed_letters = self.guessed_letters_object.text
 
-        if letter not in guessed_letters:
-            self.guessed_letters_object.set_text(guessed_letters + letter)
-            guessed_letters = self.guessed_letters_object.text
-            letter_button = game.get_letter_button(letter)
-            if letter not in correct_answer:
-                color = WRONG_COLOR
-                self.wrong_guesses += 1
-                self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
-                letter_button.change_color(color, WRONG_LETTER_ALPHA)
-                game.event.set_text(f"'{letter}' was not found!", color)
-            else:
-                color = CORRECT_COLOR
-                letter_button.change_color(color)
-                game.event.set_text(f"'{letter}' was found!", color)
-
-        else:
+        if letter in guessed_letters:
             game.event.set_text(f"Already guessed '{letter}'")
             return
-
+        self.guessed_letters_object.set_text(guessed_letters + letter)
+        guessed_letters = self.guessed_letters_object.text
+        letter_button = game.get_letter_button(letter)
+        if letter not in correct_answer:
+            color = WRONG_COLOR
+            self.wrong_guesses += 1
+            self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
+            letter_button.change_color(color, WRONG_LETTER_ALPHA)
+            game.event.set_text(f"'{letter}' was not found!", color)
+            if self.wrong_guesses >= self.max_wrong_guesses:
+                game.game_lost()
+            return
+        
+        color = CORRECT_COLOR
+        letter_button.change_color(color)
+        game.event.set_text(f"'{letter}' was found!", color)
+    
         print(f"{correct_answer = }")
         for letter in correct_answer:
             if letter not in guessed_letters and letter in string.ascii_uppercase:
@@ -232,8 +237,6 @@ class AnswerObject(TextObject):
         if guessed_string == correct_answer:
             game.game_won()
             
-        elif self.wrong_guesses >= self.max_wrong_guesses:
-            game.game_lost()
 
         self._update_surface()
 
@@ -351,18 +354,17 @@ async def main():
                 if game.game_ended: # make game continue after winning only once user gives input
                     game.start_new_game()
                     continue
-                else:
-                    if not menu_action(event, game.current_menu):
-                        if game.current_menu == PLAY_MENU:
-                            try:
-                                key = chr(event_key).upper()
-                                print(f"{key = }")
-                                if key in string.ascii_uppercase:
-                                        letter_button = game.get_letter_button(key)
-                                        if letter_button is not None:
-                                            letter_button.activate()
-                            except:
-                                print(f"Invalid {event_key = }")
+
+                if not menu_action(event, game.current_menu):
+                    if game.current_menu == PLAY_MENU:
+                        try:
+                            key_upper = chr(event_key).upper()
+                            if key_upper in string.ascii_uppercase:
+                                    letter_button = game.get_letter_button(key_upper)
+                                    if letter_button is not None:
+                                        letter_button.activate()
+                        except:
+                            print(f"Invalid {event_key = }")
 
             
             if event.type == pygame.MOUSEBUTTONDOWN:
