@@ -15,6 +15,7 @@ class Game:
         self.game_ended = False
         self.guessed_letters = []
         self.current_menu = None
+        self.letter_buttons = []
         self.game_state_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
             PLAY_MENU: {},
             MAIN_MENU: {}
@@ -24,6 +25,17 @@ class Game:
         self.add_object(PLAY_MENU, event_object)
         self.add_object(PLAY_MENU, answer_object.guesses_left_object)
         self.add_object(PLAY_MENU, answer_object.guessed_letters_object)
+
+        self.create_letter_buttons()
+
+    def reposition_objects(self, screen_size):
+        self.position_letter_buttons()
+
+    def create_letter_buttons(self):
+        for letter in string.ascii_uppercase:
+            new_letter = LetterButton(letter, DEFAULT_FONT)
+            self.add_object(PLAY_MENU, new_letter)
+            self.letter_buttons.append(new_letter)
 
     def set_word_selection(self, word_list):
         self.word_list = word_list
@@ -50,22 +62,22 @@ class Game:
 
     def get_letter_button(self, letter: str):
         letter = letter.upper()
-        return [object for object in self.game_state_object_list[game.current_menu][BUTTON_OBJECT_TYPE] if object.letter.upper() == letter][0]
+        return [letter_button for letter_button in self.letter_buttons if letter_button.letter.upper() == letter][0]
 
-    def position_letter_buttons(self, keyboard_rect: pygame.Rect):
+    def position_letter_buttons(self):
+        keyboard_rect = create_keyboard_zone(screen.get_size())
         letter_counter = 0
         margin_y = 20
-        margin_x = margin_y + (DEFAULT_FONT.size('A')[0] / 2)
-        letters_per_row = 9
+        margin_x = 20 + (DEFAULT_FONT.size('A')[0] / 2)
+        letter_min_spacing = 10
+        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (DEFAULT_FONT.size('A')[0] + letter_min_spacing)
         letter_row = 0
         letter_column = 0
         letter_x_spacing = (keyboard_rect.size[0] - margin_x * 2) / (letters_per_row - 1)
         letter_y_spacing = (keyboard_rect.size[1] - DEFAULT_FONT.size('A')[1] * 1.5) / 3
 
-        for letter in string.ascii_uppercase:
-            new_letter = LetterButton(letter, DEFAULT_FONT)
-            self.add_object(PLAY_MENU, new_letter)
-            new_letter.rect.midtop = letter_column * letter_x_spacing + (keyboard_rect.topleft[0] + margin_x), letter_row * letter_y_spacing + (keyboard_rect.topleft[1] + margin_y)
+        for letter_button in self.letter_buttons:
+            letter_button.rect.midtop = letter_column * letter_x_spacing + (keyboard_rect.topleft[0] + margin_x), letter_row * letter_y_spacing + (keyboard_rect.topleft[1] + margin_y)
             letter_counter += 1
             letter_column += 1
             if letter_counter % letters_per_row == 0:
@@ -267,19 +279,28 @@ class LetterButton(ButtonObject):
         game.answer.check_letter(self.letter)
 
 
-def create_keyboard_zone():
-    keyboard_width = min(max(screen_size_x * 0.75, 450), 600)
-    keyboard_height = screen_size_y * 0.4
-    bot_y_margin = 50
-    rect_size = keyboard_width, keyboard_height
-    keyboard_rect = pygame.Rect(0, 0, *rect_size)
-    keyboard_surface = pygame.Surface(keyboard_rect.size, pygame.SRCALPHA)
-    keyboard_surface_rect = keyboard_surface.get_rect()
-    keyboard_surface_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
-    pygame.draw.rect(keyboard_surface, WRONG_COLOR, keyboard_rect)
-    keyboard_surface.set_alpha(100)
+def create_keyboard_zone(screen_size):
+    screen_size_x, screen_size_y = screen_size
+    minimum_landscape_keyboard_x_size = 450
+    maximum_landscape_keyboard_x_size = 600
+    minimum_portrait_keyboard_x_size = 300
+    maximum_portrait_keyboard_x_size = 450
+    if screen_size_x < minimum_landscape_keyboard_x_size:
+        keyboard_width = min(max(screen_size_x * 0.75, minimum_portrait_keyboard_x_size), maximum_portrait_keyboard_x_size)
+        keyboard_height = screen_size_y * 0.4
+        bot_y_margin = 50
+        rect_size = keyboard_width, keyboard_height
+        keyboard_rect = pygame.Rect(0, 0, *rect_size)
+        keyboard_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
+    else:
+        keyboard_width = min(max(screen_size_x * 0.75, minimum_landscape_keyboard_x_size), maximum_landscape_keyboard_x_size)
+        keyboard_height = screen_size_y * 0.4
+        bot_y_margin = 50
+        rect_size = keyboard_width, keyboard_height
+        keyboard_rect = pygame.Rect(0, 0, *rect_size)
+        keyboard_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
 
-    return keyboard_surface, keyboard_surface_rect
+    return keyboard_rect
 
 def read_wordlist(file_name):
     wordlist = []
@@ -305,11 +326,7 @@ async def main():
     list_of_words = read_wordlist(wordlist_file)
     game.set_word_selection(list_of_words)
 
-    keyboard_surface, keyboard_surface_rect = create_keyboard_zone()
-
     game.freeze_input = False
-
-    game.position_letter_buttons(keyboard_surface_rect)
 
     running = True
 
@@ -319,6 +336,9 @@ async def main():
         for event in events:
             if event.type == pygame.QUIT:
                 running = False
+
+            if event.type == pygame.VIDEORESIZE:
+                game.reposition_objects(screen.get_size())
 
             if game.freeze_input and event.type == SHORT_PAUSE_AFTER_WINNING:
                 game.freeze_input = False
@@ -359,8 +379,6 @@ async def main():
                             object.activate()
 
         screen.fill(LIGHT_BLUE_COLOR)
-
-        screen.blit(keyboard_surface, keyboard_surface_rect)
 
         game.draw(screen)
 
@@ -435,18 +453,19 @@ if __name__ == "__main__":
 
     guesses_left_object = EventObject(GUESSES_LEFT_FONT)
     guesses_left_object.color = BLACK_COLOR
-    guesses_left_object.topleft = 30, 20
 
     guessed_letters_object = EventObject(GUESSED_LETTERS_FONT)
     guessed_letters_object.color = BLACK_COLOR
-    guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.2
 
     answer_object = AnswerObject(ANSWER_FONT, guesses_left_object, guessed_letters_object)
     answer_object.color = BLACK_COLOR
-    answer_object.center = screen_size_x // 2, screen_size_y * 0.4
 
     event_object = EventObject(EVENT_FONT)
     event_object.color = BLACK_COLOR
+
+    guesses_left_object.topleft = 30, 20
+    guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.2
+    answer_object.center = screen_size_x // 2, screen_size_y * 0.4
     event_object.center = screen_size_x // 2, screen_size_y * 0.3
 
 
@@ -458,6 +477,8 @@ if __name__ == "__main__":
     start_button = MenuButton(start_game_scaled, start_game_scaled_rect, start_button_function)
 
     game.add_object(MAIN_MENU, start_button)
+
+    game.reposition_objects((screen_size_x, screen_size_y))
 
     game.current_menu = MAIN_MENU
 
