@@ -6,7 +6,7 @@ from typing import List, Dict, Type
 import random
 
 class Game:
-    def __init__(self, answer_object: AnswerObject, event_object: EventObject) -> None:
+    def __init__(self, answer_object: AnswerObject, event_object: TextObject) -> None:
         self.answer = answer_object
         self.event = event_object
         self.freeze_input = False
@@ -16,7 +16,7 @@ class Game:
         self.guessed_letters = []
         self.current_menu = None
         self.letter_buttons = []
-        self.game_state_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
+        self.menu_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
             PLAY_MENU: {},
             MAIN_MENU: {}
             }
@@ -33,7 +33,7 @@ class Game:
 
     def create_letter_buttons(self):
         for letter in string.ascii_uppercase:
-            new_letter = LetterButton(letter, DEFAULT_FONT)
+            new_letter = LetterButton(letter, letter, DEFAULT_FONT)
             self.add_object(PLAY_MENU, new_letter)
             self.letter_buttons.append(new_letter)
 
@@ -42,21 +42,24 @@ class Game:
 
     def get_objects(self, object_type = None):
         if object_type is None:
-            return [object for values in self.game_state_object_list[self.current_menu].values() for object in values]
-        if object_type in self.game_state_object_list[self.current_menu]:
-            return [object for object in self.game_state_object_list[self.current_menu][object_type]]
+            return [object for values in self.menu_object_list[self.current_menu].values() for object in values]
+        if object_type in self.menu_object_list[self.current_menu]:
+            return [object for object in self.menu_object_list[self.current_menu][object_type]]
         return None
+
+    def to_main_menu(self):
+        self.current_menu = MAIN_MENU
 
     def start_new_game(self):
         self.game_ended = False
         self.current_menu = PLAY_MENU
         self.event.set_text('')
         self.answer.set_answer(random.choice(self.word_list))
-        for object in self.game_state_object_list[PLAY_MENU][BUTTON_OBJECT_TYPE]:
+        for object in self.letter_buttons:
             object.change_color(BLACK_COLOR, RESET_ALPHA)
 
     def draw(self, screen):
-        for object_list in self.game_state_object_list[self.current_menu].values():
+        for object_list in self.menu_object_list[self.current_menu].values():
             for object in object_list:
                 object.draw(screen)
 
@@ -88,9 +91,9 @@ class Game:
                     letter_column = next_pos
 
     def add_object(self, game_state, object: GameObject):
-        if object.object_type not in self.game_state_object_list[game_state]:
-            self.game_state_object_list[game_state][object.object_type] = []
-        self.game_state_object_list[game_state][object.object_type].append(object)
+        if object.object_type not in self.menu_object_list[game_state]:
+            self.menu_object_list[game_state][object.object_type] = []
+        self.menu_object_list[game_state][object.object_type].append(object)
 
     def game_won(self):
         self.event.set_text("Game won!", CORRECT_COLOR)
@@ -105,7 +108,8 @@ class Game:
         pygame.time.set_timer(SHORT_PAUSE_AFTER_WINNING, self.freeze_timeout, 1)
 
 class GameObject:
-    def __init__(self) -> None:
+    def __init__(self, id: str) -> None:
+        self.id = id
         self.rect: pygame.Rect = None
         self.surface: pygame.Surface = None
         self.object_type = None
@@ -121,16 +125,16 @@ class GameObject:
         self.surface = surface
 
 class NonInteractiveObject(GameObject):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, id) -> None:
+        super().__init__(id)
         self.object_type = NON_INTERACTIVE_OBJECT_TYPE
 
 class TextObject(NonInteractiveObject):
-    def __init__(self, font: pygame.font.Font) -> None:
-        super().__init__()
+    def __init__(self, id, font: pygame.font.Font, color = None) -> None:
+        super().__init__(id)
         self.text = ''
         self.font = font
-        self.color = None
+        self.color = color
         self.temp_color = None
         self.center = None
         self.topleft = None
@@ -167,8 +171,8 @@ class TextObject(NonInteractiveObject):
             screen.blit(self.surface, surface_rect)
 
 class AnswerObject(TextObject):
-    def __init__(self, font: pygame.font.Font, guesses_left_object: EventObject, guessed_letters_object: EventObject) -> None:
-        super().__init__(font)
+    def __init__(self, id, font: pygame.font.Font, color, guesses_left_object: TextObject, guessed_letters_object: TextObject) -> None:
+        super().__init__(id, font, color)
         self.guesses_left_object = guesses_left_object
         self.guessed_letters_object = guessed_letters_object
         self.draw_text = ''
@@ -233,13 +237,9 @@ class AnswerObject(TextObject):
 
         self._update_surface()
 
-class EventObject(TextObject):
-    def __init__(self, font: pygame.font.Font) -> None:
-        super().__init__(font)
-
 class ButtonObject(GameObject):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, id) -> None:
+        super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
         self.button_function = None
 
@@ -247,8 +247,8 @@ class ButtonObject(GameObject):
         raise NotImplementedError
 
 class MenuButton(ButtonObject):
-    def __init__(self, surface, rect, button_function) -> None:
-        super().__init__()
+    def __init__(self, id, surface, rect, button_function) -> None:
+        super().__init__(id)
         self.surface = surface
         self.rect = rect
         self.button_function = button_function
@@ -257,8 +257,8 @@ class MenuButton(ButtonObject):
         self.button_function()
 
 class LetterButton(ButtonObject):
-    def __init__(self, letter, font: pygame.font.Font) -> None:
-        super().__init__()
+    def __init__(self, id, letter, font: pygame.font.Font) -> None:
+        super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
         self.letter: str = letter
         self.font = font
@@ -277,7 +277,6 @@ class LetterButton(ButtonObject):
 
     def activate(self):
         game.answer.check_letter(self.letter)
-
 
 def create_keyboard_zone(screen_size):
     screen_size_x, screen_size_y = screen_size
@@ -314,7 +313,7 @@ def read_wordlist(file_name):
 def menu_action(event, game_state):
     event_key = event.key
     if event_key == pygame.K_ESCAPE and game_state == PLAY_MENU:
-        game.current_menu = MAIN_MENU
+        game.to_main_menu()
         return True
     if event_key == pygame.K_RETURN and game_state == MAIN_MENU:
         game.start_new_game()
@@ -375,7 +374,6 @@ async def main():
                 if list_of_objects is not None:
                     for object in game.get_objects(BUTTON_OBJECT_TYPE):
                         if object.rect.collidepoint(mousepos):
-                            print(f"{object = }")
                             object.activate()
 
         screen.fill(LIGHT_BLUE_COLOR)
@@ -406,9 +404,10 @@ if __name__ == "__main__":
         screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
     else:
         screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.RESIZABLE)
-    """
 
     screen_size_x, screen_size_y = screen.get_size()
+    """
+
 
     TICK_SPEED = 60
 
@@ -420,6 +419,10 @@ if __name__ == "__main__":
     CORRECT_COLOR = (16, 140, 40)
     WRONG_COLOR = (200, 50, 25)
     BLACK_COLOR = (0, 0, 0)
+
+    # Main game colors
+    MAIN_GOLD_BROWN_COLOR = (178, 134, 54)
+    MAIN_PURPLE_COLOR = (84, 37, 90)
     
     RESET_ALPHA = 255
     WRONG_LETTER_ALPHA = 100
@@ -427,22 +430,28 @@ if __name__ == "__main__":
     BUTTON_OBJECT_TYPE = "button"
     NON_INTERACTIVE_OBJECT_TYPE = "non_interactive"
 
+    LOGO_FONT_SIZE = 100
     DEFAULT_FONT_SIZE = 50
     ANSWER_FONT_SIZE = 40
     EVENT_FONT_SIZE = 25
     GUESSES_LEFT_SIZE = 20
     GUESSED_LETTERS_SIZE = 20
 
-    FONT_FILE_NAME = "MartianMono-VariableFont_wdth,wght.ttf"
+    FONT_FILE = "MartianMono-VariableFont_wdth,wght.ttf"
+    LOGO_FONT_FILE = "Poppins-Medium.ttf"
 
-    DEFAULT_FONT = pygame.font.Font(FONT_FILE_NAME, DEFAULT_FONT_SIZE)
-    ANSWER_FONT = pygame.font.Font(FONT_FILE_NAME, ANSWER_FONT_SIZE)
-    EVENT_FONT = pygame.font.Font(FONT_FILE_NAME, EVENT_FONT_SIZE)
-    GUESSES_LEFT_FONT = pygame.font.Font(FONT_FILE_NAME, GUESSES_LEFT_SIZE)
-    GUESSED_LETTERS_FONT = pygame.font.Font(FONT_FILE_NAME, GUESSED_LETTERS_SIZE)
+    LOGO_FONT = pygame.font.Font(LOGO_FONT_FILE, LOGO_FONT_SIZE)
+    DEFAULT_FONT = pygame.font.Font(FONT_FILE, DEFAULT_FONT_SIZE)
+    ANSWER_FONT = pygame.font.Font(FONT_FILE, ANSWER_FONT_SIZE)
+    EVENT_FONT = pygame.font.Font(FONT_FILE, EVENT_FONT_SIZE)
+    GUESSES_LEFT_FONT = pygame.font.Font(FONT_FILE, GUESSES_LEFT_SIZE)
+    GUESSED_LETTERS_FONT = pygame.font.Font(FONT_FILE, GUESSED_LETTERS_SIZE)
     
     start_game = pygame.image.load("temp_start.png").convert_alpha()
-    start_game_scaled = pygame.transform.smoothscale(start_game, (175, 90))
+    start_game_scaled = pygame.transform.smoothscale(start_game, (200, 100))
+
+    back_button = pygame.image.load("temp_back.png").convert_alpha()
+    back_button_scaled = pygame.transform.smoothscale(back_button, (150, 75))
 
 
     wordlist_file = "wordlist.txt"
@@ -451,22 +460,18 @@ if __name__ == "__main__":
     
     SHORT_PAUSE_AFTER_WINNING = pygame.USEREVENT
 
-    guesses_left_object = EventObject(GUESSES_LEFT_FONT)
-    guesses_left_object.color = BLACK_COLOR
+    guesses_left_object = TextObject("guesses_left", GUESSES_LEFT_FONT, BLACK_COLOR)
 
-    guessed_letters_object = EventObject(GUESSED_LETTERS_FONT)
-    guessed_letters_object.color = BLACK_COLOR
+    guessed_letters_object = TextObject("guessed_letters", GUESSED_LETTERS_FONT, BLACK_COLOR)
 
-    answer_object = AnswerObject(ANSWER_FONT, guesses_left_object, guessed_letters_object)
-    answer_object.color = BLACK_COLOR
+    answer_object = AnswerObject("answer", ANSWER_FONT, BLACK_COLOR, guesses_left_object, guessed_letters_object)
 
-    event_object = EventObject(EVENT_FONT)
-    event_object.color = BLACK_COLOR
+    event_object = TextObject("event", EVENT_FONT, BLACK_COLOR)
 
     guesses_left_object.topleft = 30, 20
-    guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.2
+    guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.3
     answer_object.center = screen_size_x // 2, screen_size_y * 0.4
-    event_object.center = screen_size_x // 2, screen_size_y * 0.3
+    event_object.center = screen_size_x // 2, screen_size_y * 0.2
 
 
     game = Game(answer_object, event_object)
@@ -474,9 +479,20 @@ if __name__ == "__main__":
     start_game_scaled_rect = start_game_scaled.get_rect()
     start_game_scaled_rect.center = screen_size_x // 2, screen_size_y // 2 - 100
     start_button_function = game.start_new_game
-    start_button = MenuButton(start_game_scaled, start_game_scaled_rect, start_button_function)
+    start_button = MenuButton("start_button", start_game_scaled, start_game_scaled_rect, start_button_function)
+    
+    back_button_scaled_rect = back_button_scaled.get_rect()
+    back_button_scaled_rect.topright = screen_size_x - 10, 20
+    back_button_function = game.to_main_menu
+    back_button = MenuButton("back_button", back_button_scaled, back_button_scaled_rect, back_button_function)
+    
+    logo_object = TextObject("logo", LOGO_FONT, MAIN_PURPLE_COLOR)
+    logo_object.center = screen_size_x // 2, 100
+    logo_object.set_text("OpriMagazine")
 
     game.add_object(MAIN_MENU, start_button)
+    game.add_object(MAIN_MENU, logo_object)
+    game.add_object(PLAY_MENU, back_button)
 
     game.reposition_objects((screen_size_x, screen_size_y))
 
