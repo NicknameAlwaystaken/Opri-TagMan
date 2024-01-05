@@ -29,11 +29,16 @@ class Game:
         self.create_letter_buttons()
 
     def reposition_objects(self, screen_size):
+        screen_size_x, screen_size_y = screen_size
+        self.answer.guesses_left_object.topleft = 30, 20
+        self.answer.guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.3
+        self.answer.center = screen_size_x // 2, screen_size_y * 0.4
+        self.event.center = screen_size_x // 2, screen_size_y * 0.2
         self.position_letter_buttons()
 
     def create_letter_buttons(self):
         for letter in string.ascii_uppercase:
-            new_letter = LetterButton(letter, letter, DEFAULT_FONT)
+            new_letter = LetterButton(letter, letter, LETTER_BUTTON_FONT)
             self.add_object(PLAY_MENU, new_letter)
             self.letter_buttons.append(new_letter)
 
@@ -56,7 +61,7 @@ class Game:
         self.event.set_text('')
         self.answer.set_answer(random.choice(self.word_list))
         for object in self.letter_buttons:
-            object.change_color(BLACK_COLOR, RESET_ALPHA)
+            object.change_button_state(LETTER_BUTTON_UNPRESSED)
 
     def draw(self, screen):
         for object_list in self.menu_object_list[self.current_menu].values():
@@ -70,14 +75,19 @@ class Game:
     def position_letter_buttons(self):
         keyboard_rect = create_keyboard_zone(screen.get_size())
         letter_counter = 0
-        margin_y = 20
-        margin_x = 20 + (DEFAULT_FONT.size('A')[0] / 2)
-        letter_min_x_spacing = 10
-        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (DEFAULT_FONT.size('A')[0] + letter_min_x_spacing)
+        margin_y = 5
+        background_image_size = letter_button_unpressed_scaled.get_size()
+        margin_x = 5 + (background_image_size[0] / 2)
+        letter_min_x_spacing = 5
+        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (max(background_image_size[0], letter_min_x_spacing))
         letter_row = 0
         letter_column = 0
         letter_x_spacing = (keyboard_rect.size[0] - margin_x * 2) / (letters_per_row - 1)
-        letter_y_spacing = (keyboard_rect.size[1] - DEFAULT_FONT.size('A')[1] * 1.5) / 3
+        letter_min_y_spacing = 5
+        y_space = (keyboard_rect.size[1] - margin_y * 2)
+        columns = y_space // (max(background_image_size[0], letter_min_y_spacing))
+        letter_y_spacing = (keyboard_rect.size[1] - margin_y * 2) // columns
+        print(f"{letter_y_spacing = }")
 
         for letter_button in self.letter_buttons:
             letter_button.rect.midtop = letter_column * letter_x_spacing + (keyboard_rect.topleft[0] + margin_x), letter_row * letter_y_spacing + (keyboard_rect.topleft[1] + margin_y)
@@ -129,6 +139,23 @@ class NonInteractiveObject(GameObject):
     def __init__(self, id) -> None:
         super().__init__(id)
         self.object_type = NON_INTERACTIVE_OBJECT_TYPE
+        self.center = None
+        self.topleft = None
+
+class ImageObject(NonInteractiveObject):
+    def __init__(self, id, image) -> None:
+        super().__init__(id)
+        self.surface = image
+
+    def draw(self, screen):
+        if self.surface is not None and self.center is not None:
+            surface_rect = self.surface.get_rect()
+            surface_rect.center = self.center
+            screen.blit(self.surface, surface_rect)
+        elif self.surface is not None and self.topleft is not None:
+            surface_rect = self.surface.get_rect()
+            surface_rect.topleft = self.topleft
+            screen.blit(self.surface, surface_rect)
 
 class TextObject(NonInteractiveObject):
     def __init__(self, id, font: pygame.font.Font, color = None) -> None:
@@ -214,14 +241,14 @@ class AnswerObject(TextObject):
             color = WRONG_COLOR
             self.wrong_guesses += 1
             self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
-            letter_button.change_color(color, WRONG_LETTER_ALPHA)
+            letter_button.change_button_state(LETTER_BUTTON_PRESSED_INCORRECT)
             game.event.set_text(f"'{letter}' was not found!", color)
             if self.wrong_guesses >= self.max_wrong_guesses:
                 game.game_lost()
             return
         
         color = CORRECT_COLOR
-        letter_button.change_color(color)
+        letter_button.change_button_state(LETTER_BUTTON_PRESSED_CORRECT)
         game.event.set_text(f"'{letter}' was found!", color)
     
         print(f"{correct_answer = }")
@@ -263,20 +290,41 @@ class LetterButton(ButtonObject):
     def __init__(self, id, letter, font: pygame.font.Font) -> None:
         super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
+        self.state = 0
+        self.image_list = {
+            LETTER_BUTTON_UNPRESSED: letter_button_unpressed_scaled.copy(),
+            LETTER_BUTTON_PRESSED_CORRECT: letter_button_pressed_correct_scaled.copy(),
+            LETTER_BUTTON_PRESSED_INCORRECT: letter_button_pressed_incorrect_scaled.copy()
+            }
+        self.background_image = self.image_list[self.state]
         self.letter: str = letter
         self.font = font
         self.color = BLACK_COLOR
-        self.surface = font.render(letter, True, self.color)
-        self.rect = self.surface.get_rect()
+        self.letter_surface = font.render(letter, True, self.color)
+        self.rect = self.background_image.get_rect()
+        self.surface = None
+        self.pressed_alpha = {
+            LETTER_BUTTON_UNPRESSED: 255,
+            LETTER_BUTTON_PRESSED_CORRECT: 150,
+            LETTER_BUTTON_PRESSED_INCORRECT: 100
+            }
 
-    def change_color(self, color, alpha = None):
-        self.color = color
-        self._update_surface(alpha)
+        self._update_surface()
 
-    def _update_surface(self, alpha):
-        self.surface = self.font.render(self.letter, True, self.color)
-        if alpha is not None:
-            self.surface.set_alpha(alpha)
+    def change_button_state(self, state_number): # 0 for unpressed state, 1 for correct pressed, 2 for incorrect pressed
+        self.state = state_number
+        self._update_surface()
+
+    def _update_surface(self):
+        self.background_image = self.image_list[self.state]
+        self.letter_surface = self.font.render(self.letter, True, self.color)
+        letter_surface_rect = self.letter_surface.get_rect()
+        letter_surface_rect.center = self.background_image.get_rect().center
+        self.surface = self.background_image
+
+        self.surface.blit(self.letter_surface, letter_surface_rect)
+
+        self.surface.set_alpha(self.pressed_alpha[self.state])
 
     def activate(self):
         game.answer.check_letter(self.letter)
@@ -287,13 +335,15 @@ def create_keyboard_zone(screen_size):
     maximum_landscape_keyboard_x_size = 600
     minimum_portrait_keyboard_x_size = 300
     maximum_portrait_keyboard_x_size = 450
-    if screen_size_x < minimum_landscape_keyboard_x_size:
+    rotate_to_portrait = screen_size_x < screen_size_y
+    if rotate_to_portrait:
         keyboard_width = min(max(screen_size_x * 0.75, minimum_portrait_keyboard_x_size), maximum_portrait_keyboard_x_size)
-        keyboard_height = screen_size_y * 0.4
+        keyboard_height = screen_size_y * 0.5
         bot_y_margin = 50
         rect_size = keyboard_width, keyboard_height
         keyboard_rect = pygame.Rect(0, 0, *rect_size)
         keyboard_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
+        print(f"Portrait: {screen_size = }")
     else:
         keyboard_width = min(max(screen_size_x * 0.75, minimum_landscape_keyboard_x_size), maximum_landscape_keyboard_x_size)
         keyboard_height = screen_size_y * 0.4
@@ -301,6 +351,7 @@ def create_keyboard_zone(screen_size):
         rect_size = keyboard_width, keyboard_height
         keyboard_rect = pygame.Rect(0, 0, *rect_size)
         keyboard_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
+        print(f"Landscape: {screen_size = }")
 
     return keyboard_rect
 
@@ -434,6 +485,7 @@ if __name__ == "__main__":
 
     LOGO_FONT_SIZE = 100
     DEFAULT_FONT_SIZE = 50
+    LETTER_BUTTON_FONT_SIZE = 40
     ANSWER_FONT_SIZE = 40
     EVENT_FONT_SIZE = 25
     GUESSES_LEFT_SIZE = 20
@@ -442,18 +494,39 @@ if __name__ == "__main__":
     FONT_FILE = "MartianMono-VariableFont_wdth,wght.ttf"
     LOGO_FONT_FILE = "Poppins-Medium.ttf"
 
+    ARIAL_BLACK = 'arialblack'
+
     LOGO_FONT = pygame.font.Font(LOGO_FONT_FILE, LOGO_FONT_SIZE)
     DEFAULT_FONT = pygame.font.Font(FONT_FILE, DEFAULT_FONT_SIZE)
+    LETTER_BUTTON_FONT = pygame.font.SysFont(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
     ANSWER_FONT = pygame.font.Font(FONT_FILE, ANSWER_FONT_SIZE)
     EVENT_FONT = pygame.font.Font(FONT_FILE, EVENT_FONT_SIZE)
     GUESSES_LEFT_FONT = pygame.font.Font(FONT_FILE, GUESSES_LEFT_SIZE)
     GUESSED_LETTERS_FONT = pygame.font.Font(FONT_FILE, GUESSED_LETTERS_SIZE)
+
+    oprim_logo = pygame.image.load("OpriM_logo.jpg").convert_alpha()
+    oprim_logo_scaled = pygame.transform.rotozoom(oprim_logo, 0, 0.5)
     
     start_game = pygame.image.load("temp_start.png").convert_alpha()
     start_game_scaled = pygame.transform.smoothscale(start_game, (200, 100))
 
     back_button = pygame.image.load("temp_back.png").convert_alpha()
     back_button_scaled = pygame.transform.smoothscale(back_button, (150, 75))
+
+    letter_button_size = LETTER_BUTTON_FONT_SIZE * 1.75
+
+    LETTER_BUTTON_UNPRESSED = 0
+    LETTER_BUTTON_PRESSED_CORRECT = 1
+    LETTER_BUTTON_PRESSED_INCORRECT = 2
+
+    letter_button_unpressed = pygame.image.load("letter_button_unpressed.png").convert_alpha()
+    letter_button_unpressed_scaled = pygame.transform.smoothscale(letter_button_unpressed, (letter_button_size, letter_button_size))
+
+    letter_button_pressed_incorrect = pygame.image.load("letter_button_pressed_incorrect.png").convert_alpha()
+    letter_button_pressed_incorrect_scaled = pygame.transform.smoothscale(letter_button_pressed_incorrect, (letter_button_size, letter_button_size))
+
+    letter_button_pressed_correct = pygame.image.load("letter_button_pressed_correct.png").convert_alpha()
+    letter_button_pressed_correct_scaled = pygame.transform.smoothscale(letter_button_pressed_correct, (letter_button_size, letter_button_size))
 
 
     wordlist_file = "wordlist.txt"
@@ -470,12 +543,6 @@ if __name__ == "__main__":
 
     event_object = TextObject("event", EVENT_FONT, BLACK_COLOR)
 
-    guesses_left_object.topleft = 30, 20
-    guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.3
-    answer_object.center = screen_size_x // 2, screen_size_y * 0.4
-    event_object.center = screen_size_x // 2, screen_size_y * 0.2
-
-
     game = Game(answer_object, event_object)
 
     start_game_scaled_rect = start_game_scaled.get_rect()
@@ -488,9 +555,8 @@ if __name__ == "__main__":
     back_button_function = game.to_main_menu
     back_button = MenuButton("back_button", back_button_scaled, back_button_scaled_rect, back_button_function)
     
-    logo_object = TextObject("logo", LOGO_FONT, MAIN_PURPLE_COLOR)
+    logo_object = ImageObject("logo", oprim_logo_scaled)
     logo_object.center = screen_size_x // 2, 100
-    logo_object.set_text("OpriMagazine")
 
     game.add_object(MAIN_MENU, start_button)
     game.add_object(MAIN_MENU, logo_object)
