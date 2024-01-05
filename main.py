@@ -29,12 +29,31 @@ class Game:
         self.create_letter_buttons()
 
     def reposition_objects(self, screen_size):
+        self.reposition_menu_objects(screen_size)
+        self.reposition_text_objects(screen_size)
+        self.reposition_letter_buttons(screen_size)
+
+    def reposition_text_objects(self, screen_size):
         screen_size_x, screen_size_y = screen_size
         self.answer.guesses_left_object.topleft = 30, 20
         self.answer.guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.3
         self.answer.center = screen_size_x // 2, screen_size_y * 0.4
         self.event.center = screen_size_x // 2, screen_size_y * 0.2
-        self.position_letter_buttons()
+
+    def reposition_menu_objects(self, screen_size):
+        screen_size_x, screen_size_y = screen_size
+        for menu in self.menu_object_list.values():
+            for object_list in menu.values():
+                for object in object_list:
+                    print(f"{object.id = }")
+                    if object.id == START_BUTTON_ID:
+                        object.rect.center = screen_size_x // 2, screen_size_y // 2 - 100
+                        print(f"{object.rect.center = }")
+                    if object.id == BACK_BUTTON_ID:
+                        object.rect.topright = screen_size_x - 10, 20
+                    if object.id == LOGO_ID:
+                        logo_object.center = screen_size_x // 2, 100
+        
 
     def create_letter_buttons(self):
         for letter in string.ascii_uppercase:
@@ -72,8 +91,8 @@ class Game:
         letter = letter.upper()
         return [letter_button for letter_button in self.letter_buttons if letter_button.letter.upper() == letter][0]
 
-    def position_letter_buttons(self):
-        keyboard_rect = create_keyboard_zone(screen.get_size())
+    def reposition_letter_buttons(self, screen_size):
+        keyboard_rect = create_keyboard_zone(screen_size)
         letter_counter = 0
         margin_y = 5
         background_image_size = letter_button_unpressed_scaled.get_size()
@@ -487,7 +506,7 @@ if __name__ == "__main__":
     DEFAULT_FONT_SIZE = 50
     LETTER_BUTTON_FONT_SIZE = 40
     ANSWER_FONT_SIZE = 40
-    EVENT_FONT_SIZE = 25
+    EVENT_FONT_SIZE = 20
     GUESSES_LEFT_SIZE = 20
     GUESSED_LETTERS_SIZE = 20
 
@@ -545,18 +564,21 @@ if __name__ == "__main__":
 
     game = Game(answer_object, event_object)
 
+    START_BUTTON_ID = 'start_button'
+    BACK_BUTTON_ID = 'back_button'
+    LOGO_ID = 'logo'
+
     start_game_scaled_rect = start_game_scaled.get_rect()
     start_game_scaled_rect.center = screen_size_x // 2, screen_size_y // 2 - 100
     start_button_function = game.start_new_game
-    start_button = MenuButton("start_button", start_game_scaled, start_game_scaled_rect, start_button_function)
+    start_button = MenuButton(START_BUTTON_ID, start_game_scaled, start_game_scaled_rect, start_button_function)
     
     back_button_scaled_rect = back_button_scaled.get_rect()
     back_button_scaled_rect.topright = screen_size_x - 10, 20
     back_button_function = game.to_main_menu
-    back_button = MenuButton("back_button", back_button_scaled, back_button_scaled_rect, back_button_function)
+    back_button = MenuButton(BACK_BUTTON_ID, back_button_scaled, back_button_scaled_rect, back_button_function)
     
-    logo_object = ImageObject("logo", oprim_logo_scaled)
-    logo_object.center = screen_size_x // 2, 100
+    logo_object = ImageObject(LOGO_ID, oprim_logo_scaled)
 
     game.add_object(MAIN_MENU, start_button)
     game.add_object(MAIN_MENU, logo_object)
