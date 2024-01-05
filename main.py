@@ -448,7 +448,7 @@ async def main():
                         if object.rect.collidepoint(mousepos):
                             object.activate()
 
-        screen.fill(LIGHT_BLUE_COLOR)
+        screen.fill(BACKGROUND_COLOR)
 
         game.draw(screen)
 
@@ -491,6 +491,9 @@ if __name__ == "__main__":
     CORRECT_COLOR = (16, 140, 40)
     WRONG_COLOR = (200, 50, 25)
     BLACK_COLOR = (0, 0, 0)
+    WHITE_COLOR = (255, 255, 255)
+
+    BACKGROUND_COLOR = WHITE_COLOR
 
     # Main game colors
     MAIN_GOLD_BROWN_COLOR = (178, 134, 54)
