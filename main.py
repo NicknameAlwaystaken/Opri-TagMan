@@ -20,6 +20,10 @@ class Game:
             PLAY_MENU: {},
             MAIN_MENU: {}
             }
+        self.transition_screen = None
+        self.is_menu_transitioning = False
+        self.transition_time = 1000 # milliseconds
+        self.transition_start_time = 0 # milliseconds
 
         self.add_object(PLAY_MENU, answer_object)
         self.add_object(PLAY_MENU, event_object)
@@ -35,24 +39,34 @@ class Game:
 
     def reposition_text_objects(self, screen_size):
         screen_size_x, screen_size_y = screen_size
+        
+        if screen_size_x >= screen_size_y: # landscape
+            guessed_letters_pos = 0.33
+            answer_pos = 0.4
+            event_pos = answer_pos # left of answer_pos
+        else: # portrait
+            guessed_letters_pos = 0.23
+            answer_pos = 0.30
+            event_pos = guessed_letters_pos
+        event_screen_x_pos = 0.2
         self.answer.guesses_left_object.topleft = 30, 20
-        self.answer.guessed_letters_object.center = screen_size_x // 2, screen_size_y * 0.3
-        self.answer.center = screen_size_x // 2, screen_size_y * 0.4
-        self.event.center = screen_size_x // 2, screen_size_y * 0.2
+        self.answer.guessed_letters_object.center = screen_size_x // 2, screen_size_y * guessed_letters_pos
+        self.answer.center = screen_size_x // 2, screen_size_y * answer_pos
+        self.event.center = screen_size_x * event_screen_x_pos, screen_size_y * event_pos 
 
     def reposition_menu_objects(self, screen_size):
         screen_size_x, screen_size_y = screen_size
         for menu in self.menu_object_list.values():
             for object_list in menu.values():
                 for object in object_list:
-                    print(f"{object.id = }")
                     if object.id == START_BUTTON_ID:
                         object.rect.center = screen_size_x // 2, screen_size_y // 2 - 100
-                        print(f"{object.rect.center = }")
-                    if object.id == BACK_BUTTON_ID:
+                    elif object.id == BACK_BUTTON_ID:
                         object.rect.topright = screen_size_x - 10, 20
-                    if object.id == LOGO_ID:
-                        logo_object.center = screen_size_x // 2, 100
+                    elif object.id == LOGO_MAIN_ID:
+                        logo_main_object.center = screen_size_x // 2, 100
+                    elif object.id == LOGO_GAME_ID:
+                        logo_game_object.center = screen_size_x // 2, 150
         
 
     def create_letter_buttons(self):
@@ -71,21 +85,38 @@ class Game:
             return [object for object in self.menu_object_list[self.current_menu][object_type]]
         return None
 
-    def to_main_menu(self):
-        self.current_menu = MAIN_MENU
+    def go_to_menu(self, menu):
+        self.current_menu = menu
+        self.start_transition()
+
+    def go_to_main_menu(self):
+        self.go_to_menu(MAIN_MENU)
+
+    def start_transition(self):
+        self.transition_screen = pygame.Surface(screen.get_size())
+        self.transition_screen.fill(BLACK_COLOR)
+        pygame.time.set_timer(TRANSITION_TIMER, self.transition_time, 1)
+        self.transition_start_time = pygame.time.get_ticks()
+        game.freeze_input = True
+        self.is_menu_transitioning = True
 
     def start_new_game(self):
         self.game_ended = False
-        self.current_menu = PLAY_MENU
+        self.go_to_menu(PLAY_MENU)
         self.event.set_text('')
         self.answer.set_answer(random.choice(self.word_list))
         for object in self.letter_buttons:
             object.change_button_state(LETTER_BUTTON_UNPRESSED)
 
-    def draw(self, screen):
+    def draw(self, screen: pygame.Surface):
         for object_list in self.menu_object_list[self.current_menu].values():
             for object in object_list:
                 object.draw(screen)
+
+        if self.is_menu_transitioning and self.transition_screen is not None:
+            ticks = (pygame.time.get_ticks() - self.transition_start_time)
+            self.transition_screen.set_alpha(255 * ((self.transition_time - ticks) / self.transition_time))
+            screen.blit(self.transition_screen, self.transition_screen.get_rect())
 
     def get_letter_button(self, letter: str):
         letter = letter.upper()
@@ -93,21 +124,25 @@ class Game:
 
     def reposition_letter_buttons(self, screen_size):
         keyboard_rect = create_keyboard_zone(screen_size)
-        letter_counter = 0
-        margin_y = 5
         background_image_size = letter_button_unpressed_scaled.get_size()
-        margin_x = 5 + (background_image_size[0] / 2)
-        letter_min_x_spacing = 5
-        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (max(background_image_size[0], letter_min_x_spacing))
+        # X spacing
+        size_multiplier_x = 1.2
+        margin_x = 0 
+        letters_per_row = (keyboard_rect.size[0] - margin_x * 2) // (background_image_size[0] / size_multiplier_x)
         letter_row = 0
         letter_column = 0
         letter_x_spacing = (keyboard_rect.size[0] - margin_x * 2) / (letters_per_row - 1)
-        letter_min_y_spacing = 5
-        y_space = (keyboard_rect.size[1] - margin_y * 2)
-        columns = y_space // (max(background_image_size[0], letter_min_y_spacing))
-        letter_y_spacing = (keyboard_rect.size[1] - margin_y * 2) // columns
-        print(f"{letter_y_spacing = }")
+        print(f"{keyboard_rect.size[0] = } {background_image_size[0] = } {letters_per_row = }")
+        print(f"{letter_x_spacing = }")
 
+        # Y spacing
+        size_multiplier_y = 1.05
+        margin_y = 0
+        y_space = (keyboard_rect.size[1] - margin_y * 2)
+        columns = y_space // (background_image_size[0] / size_multiplier_y)
+        letter_y_spacing = (keyboard_rect.size[1] - margin_y * 2) // columns
+
+        letter_counter = 0
         for letter_button in self.letter_buttons:
             letter_button.rect.midtop = letter_column * letter_x_spacing + (keyboard_rect.topleft[0] + margin_x), letter_row * letter_y_spacing + (keyboard_rect.topleft[1] + margin_y)
             letter_counter += 1
@@ -129,13 +164,13 @@ class Game:
         self.event.set_text("Game won!", CORRECT_COLOR)
         self.game_ended = True
         self.freeze_input = True
-        pygame.time.set_timer(SHORT_PAUSE_AFTER_WINNING, self.freeze_timeout, 1)
+        pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, self.freeze_timeout, 1)
 
     def game_lost(self):
         self.event.set_text("Game lost!", WRONG_COLOR)
         self.game_ended = True
         self.freeze_input = True
-        pygame.time.set_timer(SHORT_PAUSE_AFTER_WINNING, self.freeze_timeout, 1)
+        pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, self.freeze_timeout, 1)
 
 class GameObject:
     def __init__(self, id: str) -> None:
@@ -185,6 +220,7 @@ class TextObject(NonInteractiveObject):
         self.temp_color = None
         self.center = None
         self.topleft = None
+        self.bottomleft = None
         self.alpha = None
 
     def set_text(self, text, color = None):
@@ -215,6 +251,10 @@ class TextObject(NonInteractiveObject):
         elif self.surface is not None and self.topleft is not None:
             surface_rect = self.surface.get_rect()
             surface_rect.topleft = self.topleft
+            screen.blit(self.surface, surface_rect)
+        elif self.surface is not None and self.bottomleft is not None:
+            surface_rect = self.surface.get_rect()
+            surface_rect.bottomleft = self.bottomleft
             screen.blit(self.surface, surface_rect)
 
 class AnswerObject(TextObject):
@@ -261,7 +301,7 @@ class AnswerObject(TextObject):
             self.wrong_guesses += 1
             self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
             letter_button.change_button_state(LETTER_BUTTON_PRESSED_INCORRECT)
-            game.event.set_text(f"'{letter}' was not found!", color)
+            game.event.set_text(f"'{letter}' not found!", color)
             if self.wrong_guesses >= self.max_wrong_guesses:
                 game.game_lost()
             return
@@ -318,7 +358,7 @@ class LetterButton(ButtonObject):
         self.background_image = self.image_list[self.state]
         self.letter: str = letter
         self.font = font
-        self.color = BLACK_COLOR
+        self.color = LETTER_BUTTON_COLOR
         self.letter_surface = font.render(letter, True, self.color)
         self.rect = self.background_image.get_rect()
         self.surface = None
@@ -338,7 +378,8 @@ class LetterButton(ButtonObject):
         self.background_image = self.image_list[self.state]
         self.letter_surface = self.font.render(self.letter, True, self.color)
         letter_surface_rect = self.letter_surface.get_rect()
-        letter_surface_rect.center = self.background_image.get_rect().center
+        background_image_center = self.background_image.get_rect().center
+        letter_surface_rect.center = (background_image_center[0], background_image_center[1] - 2) # It looks like letters are bit off center, lifting them up by few pixels
         self.surface = self.background_image
 
         self.surface.blit(self.letter_surface, letter_surface_rect)
@@ -353,7 +394,7 @@ def create_keyboard_zone(screen_size):
     minimum_landscape_keyboard_x_size = 450
     maximum_landscape_keyboard_x_size = 600
     minimum_portrait_keyboard_x_size = 300
-    maximum_portrait_keyboard_x_size = 450
+    maximum_portrait_keyboard_x_size = minimum_landscape_keyboard_x_size
     rotate_to_portrait = screen_size_x < screen_size_y
     if rotate_to_portrait:
         keyboard_width = min(max(screen_size_x * 0.75, minimum_portrait_keyboard_x_size), maximum_portrait_keyboard_x_size)
@@ -362,7 +403,6 @@ def create_keyboard_zone(screen_size):
         rect_size = keyboard_width, keyboard_height
         keyboard_rect = pygame.Rect(0, 0, *rect_size)
         keyboard_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
-        print(f"Portrait: {screen_size = }")
     else:
         keyboard_width = min(max(screen_size_x * 0.75, minimum_landscape_keyboard_x_size), maximum_landscape_keyboard_x_size)
         keyboard_height = screen_size_y * 0.4
@@ -370,7 +410,6 @@ def create_keyboard_zone(screen_size):
         rect_size = keyboard_width, keyboard_height
         keyboard_rect = pygame.Rect(0, 0, *rect_size)
         keyboard_rect.midbottom = screen_size_x // 2, screen_size_y - bot_y_margin
-        print(f"Landscape: {screen_size = }")
 
     return keyboard_rect
 
@@ -386,7 +425,7 @@ def read_wordlist(file_name):
 def menu_action(event, game_state):
     event_key = event.key
     if event_key == pygame.K_ESCAPE and game_state == PLAY_MENU:
-        game.to_main_menu()
+        game.go_to_menu(MAIN_MENU)
         return True
     if event_key == pygame.K_RETURN and game_state == MAIN_MENU:
         game.start_new_game()
@@ -412,7 +451,12 @@ async def main():
             if event.type == pygame.VIDEORESIZE:
                 game.reposition_objects(screen.get_size())
 
-            if game.freeze_input and event.type == SHORT_PAUSE_AFTER_WINNING:
+            if event.type == TRANSITION_TIMER:
+                game.is_menu_transitioning = False
+                game.freeze_input = False
+                pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, 0, 1)
+
+            if game.game_ended and event.type == PAUSE_AFTER_WIN_TIMER:
                 game.freeze_input = False
                 game.answer.guesses_left_object.set_text("Continue...")
 
@@ -460,25 +504,14 @@ async def main():
 
 if __name__ == "__main__":
     pygame.init()
-    """
-    screen_size_x = 1024
-    screen_size_y = 768
-    """
     
-    screen_size_x = 1024
-    screen_size_y = 768
+    screen_size_x, screen_size_y = (1024, 768)
 
-    screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
-
-    """
     display_info = pygame.display.Info()
     if screen_size_x <= display_info.current_w and screen_size_y <= display_info.current_h:
         screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
     else:
         screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.RESIZABLE)
-
-    screen_size_x, screen_size_y = screen.get_size()
-    """
 
 
     TICK_SPEED = 60
@@ -492,6 +525,9 @@ if __name__ == "__main__":
     WRONG_COLOR = (200, 50, 25)
     BLACK_COLOR = (0, 0, 0)
     WHITE_COLOR = (255, 255, 255)
+    CREAM_COLOR = (255, 253, 208)
+
+    LETTER_BUTTON_COLOR = CREAM_COLOR
 
     BACKGROUND_COLOR = WHITE_COLOR
 
@@ -526,16 +562,20 @@ if __name__ == "__main__":
     GUESSES_LEFT_FONT = pygame.font.Font(FONT_FILE, GUESSES_LEFT_SIZE)
     GUESSED_LETTERS_FONT = pygame.font.Font(FONT_FILE, GUESSED_LETTERS_SIZE)
 
-    oprim_logo = pygame.image.load("OpriM_logo.jpg").convert_alpha()
-    oprim_logo_scaled = pygame.transform.rotozoom(oprim_logo, 0, 0.5)
+    oprimagazine_logo = pygame.image.load("oprimagazine_logo.png").convert_alpha()
+    
+    main_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo, 0, 0.4)
+    game_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo, 0, 0.3)
     
     start_game = pygame.image.load("temp_start.png").convert_alpha()
     start_game_scaled = pygame.transform.smoothscale(start_game, (200, 100))
 
-    back_button = pygame.image.load("temp_back.png").convert_alpha()
-    back_button_scaled = pygame.transform.smoothscale(back_button, (150, 75))
+    back_button_size = (785, 490)
+    back_button_scale = 7
+    back_button = pygame.image.load("back_button.png").convert_alpha()
+    back_button_scaled = pygame.transform.smoothscale(back_button, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
 
-    letter_button_size = LETTER_BUTTON_FONT_SIZE * 1.75
+    letter_button_size = LETTER_BUTTON_FONT_SIZE * 2
 
     LETTER_BUTTON_UNPRESSED = 0
     LETTER_BUTTON_PRESSED_CORRECT = 1
@@ -555,7 +595,9 @@ if __name__ == "__main__":
 
     clock = pygame.time.Clock()
     
-    SHORT_PAUSE_AFTER_WINNING = pygame.USEREVENT
+    PAUSE_AFTER_WIN_TIMER = pygame.USEREVENT
+
+    TRANSITION_TIMER = pygame.USEREVENT
 
     guesses_left_object = TextObject("guesses_left", GUESSES_LEFT_FONT, BLACK_COLOR)
 
@@ -569,22 +611,23 @@ if __name__ == "__main__":
 
     START_BUTTON_ID = 'start_button'
     BACK_BUTTON_ID = 'back_button'
-    LOGO_ID = 'logo'
+    LOGO_MAIN_ID = 'logo_main'
+    LOGO_GAME_ID = 'logo_game'
 
     start_game_scaled_rect = start_game_scaled.get_rect()
-    start_game_scaled_rect.center = screen_size_x // 2, screen_size_y // 2 - 100
     start_button_function = game.start_new_game
     start_button = MenuButton(START_BUTTON_ID, start_game_scaled, start_game_scaled_rect, start_button_function)
     
     back_button_scaled_rect = back_button_scaled.get_rect()
-    back_button_scaled_rect.topright = screen_size_x - 10, 20
-    back_button_function = game.to_main_menu
+    back_button_function = game.go_to_main_menu
     back_button = MenuButton(BACK_BUTTON_ID, back_button_scaled, back_button_scaled_rect, back_button_function)
     
-    logo_object = ImageObject(LOGO_ID, oprim_logo_scaled)
+    logo_main_object = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
+    logo_game_object = ImageObject(LOGO_GAME_ID, game_menu_logo_scaled)
 
     game.add_object(MAIN_MENU, start_button)
-    game.add_object(MAIN_MENU, logo_object)
+    game.add_object(MAIN_MENU, logo_main_object)
+    game.add_object(PLAY_MENU, logo_game_object)
     game.add_object(PLAY_MENU, back_button)
 
     game.reposition_objects((screen_size_x, screen_size_y))
