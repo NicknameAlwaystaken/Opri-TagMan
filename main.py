@@ -22,6 +22,7 @@ class Game:
             }
         self.transition_screen = None
         self.is_menu_transitioning = False
+        self.transitioning_to = None
         self.transition_time = 1000 # milliseconds
         self.transition_start_time = 0 # milliseconds
 
@@ -31,6 +32,11 @@ class Game:
         self.add_object(PLAY_MENU, answer_object.guessed_letters_object)
 
         self.create_letter_buttons()
+
+    def update(self):
+        for object_list in self.menu_object_list[self.current_menu].values():
+            for object in object_list:
+                object.update()
 
     def reposition_objects(self, screen_size):
         self.reposition_menu_objects(screen_size)
@@ -86,7 +92,7 @@ class Game:
         return None
 
     def go_to_menu(self, menu):
-        self.current_menu = menu
+        self.transitioning_to = menu
         self.start_transition()
 
     def go_to_main_menu(self):
@@ -106,7 +112,7 @@ class Game:
         self.event.set_text('')
         self.answer.set_answer(random.choice(self.word_list))
         for object in self.letter_buttons:
-            object.change_button_state(LETTER_BUTTON_UNPRESSED)
+            object.change_button_state(BUTTON_UNPRESSED)
 
     def draw(self, screen: pygame.Surface):
         for object_list in self.menu_object_list[self.current_menu].values():
@@ -115,7 +121,7 @@ class Game:
 
         if self.is_menu_transitioning and self.transition_screen is not None:
             ticks = (pygame.time.get_ticks() - self.transition_start_time)
-            self.transition_screen.set_alpha(255 * ((self.transition_time - ticks) / self.transition_time))
+            self.transition_screen.set_alpha(255 - (255 * ((self.transition_time - ticks) / self.transition_time)))
             screen.blit(self.transition_screen, self.transition_screen.get_rect())
 
     def get_letter_button(self, letter: str):
@@ -188,6 +194,9 @@ class GameObject:
 
     def set_surface(self, surface: pygame.Surface):
         self.surface = surface
+
+    def update(self):
+        pass
 
 class NonInteractiveObject(GameObject):
     def __init__(self, id) -> None:
@@ -300,14 +309,14 @@ class AnswerObject(TextObject):
             color = WRONG_COLOR
             self.wrong_guesses += 1
             self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
-            letter_button.change_button_state(LETTER_BUTTON_PRESSED_INCORRECT)
+            letter_button.change_button_state(BUTTON_PRESSED_INCORRECT)
             game.event.set_text(f"'{letter}' not found!", color)
             if self.wrong_guesses >= self.max_wrong_guesses:
                 game.game_lost()
             return
         
         color = CORRECT_COLOR
-        letter_button.change_button_state(LETTER_BUTTON_PRESSED_CORRECT)
+        letter_button.change_button_state(BUTTON_PRESSED_CORRECT)
         game.event.set_text(f"'{letter}' was found!", color)
     
         print(f"{correct_answer = }")
@@ -331,29 +340,51 @@ class ButtonObject(GameObject):
         super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
         self.button_function = None
+        self.state = 0
 
     def activate(self):
         raise NotImplementedError
 
 class MenuButton(ButtonObject):
-    def __init__(self, id, surface, rect, button_function) -> None:
+    def __init__(self, id, surface_pressed: pygame.Surface, surface_unpressed: pygame.Surface, rect, button_function) -> None:
         super().__init__(id)
-        self.surface = surface
         self.rect = rect
         self.button_function = button_function
+        self.button_pressed_timer = 500
+        self.button_pressed_last_tick = 0
+        self.image_list = {
+            BUTTON_UNPRESSED: surface_unpressed.copy(),
+            BUTTON_PRESSED: surface_pressed.copy()
+            }
+        self.surface = self.image_list[self.state]
+
+    def update(self):
+        if self.state == BUTTON_PRESSED:
+            ticks = pygame.time.get_ticks() - self.button_pressed_last_tick
+            if ticks >= self.button_pressed_timer:
+                self.state = BUTTON_UNPRESSED
+                self._update_surface()
 
     def activate(self):
         self.button_function()
+        self.state = BUTTON_PRESSED
+        self.button_pressed_last_tick = pygame.time.get_ticks()
+        self._update_surface()
+        
+    def _update_surface(self):
+        self.surface = self.image_list[self.state]
+        
+    def change_button_state(self, state_number): # 0 for unpressed state, 1 for correct pressed, 2 for incorrect pressed
+        self.state = state_number
 
 class LetterButton(ButtonObject):
     def __init__(self, id, letter, font: pygame.font.Font) -> None:
         super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
-        self.state = 0
         self.image_list = {
-            LETTER_BUTTON_UNPRESSED: letter_button_unpressed_scaled.copy(),
-            LETTER_BUTTON_PRESSED_CORRECT: letter_button_pressed_correct_scaled.copy(),
-            LETTER_BUTTON_PRESSED_INCORRECT: letter_button_pressed_incorrect_scaled.copy()
+            BUTTON_UNPRESSED: letter_button_unpressed_scaled.copy(),
+            BUTTON_PRESSED_CORRECT: letter_button_pressed_correct_scaled.copy(),
+            BUTTON_PRESSED_INCORRECT: letter_button_pressed_incorrect_scaled.copy()
             }
         self.background_image = self.image_list[self.state]
         self.letter: str = letter
@@ -363,9 +394,9 @@ class LetterButton(ButtonObject):
         self.rect = self.background_image.get_rect()
         self.surface = None
         self.pressed_alpha = {
-            LETTER_BUTTON_UNPRESSED: 255,
-            LETTER_BUTTON_PRESSED_CORRECT: 150,
-            LETTER_BUTTON_PRESSED_INCORRECT: 100
+            BUTTON_UNPRESSED: 255,
+            BUTTON_PRESSED_CORRECT: 150,
+            BUTTON_PRESSED_INCORRECT: 100
             }
 
         self._update_surface()
@@ -452,6 +483,8 @@ async def main():
                 game.reposition_objects(screen.get_size())
 
             if event.type == TRANSITION_TIMER:
+                game.current_menu = game.transitioning_to
+                game.transitioning_to = None
                 game.is_menu_transitioning = False
                 game.freeze_input = False
                 pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, 0, 1)
@@ -494,6 +527,7 @@ async def main():
 
         screen.fill(BACKGROUND_COLOR)
 
+        game.update()
         game.draw(screen)
 
         pygame.display.flip()
@@ -541,7 +575,6 @@ if __name__ == "__main__":
     BUTTON_OBJECT_TYPE = "button"
     NON_INTERACTIVE_OBJECT_TYPE = "non_interactive"
 
-    LOGO_FONT_SIZE = 100
     DEFAULT_FONT_SIZE = 50
     LETTER_BUTTON_FONT_SIZE = 40
     ANSWER_FONT_SIZE = 40
@@ -550,11 +583,9 @@ if __name__ == "__main__":
     GUESSED_LETTERS_SIZE = 20
 
     FONT_FILE = "MartianMono-VariableFont_wdth,wght.ttf"
-    LOGO_FONT_FILE = "Poppins-Medium.ttf"
 
     ARIAL_BLACK = 'arialblack'
 
-    LOGO_FONT = pygame.font.Font(LOGO_FONT_FILE, LOGO_FONT_SIZE)
     DEFAULT_FONT = pygame.font.Font(FONT_FILE, DEFAULT_FONT_SIZE)
     LETTER_BUTTON_FONT = pygame.font.SysFont(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
     ANSWER_FONT = pygame.font.Font(FONT_FILE, ANSWER_FONT_SIZE)
@@ -567,19 +598,24 @@ if __name__ == "__main__":
     main_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo, 0, 0.4)
     game_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo, 0, 0.3)
     
-    start_game = pygame.image.load("temp_start.png").convert_alpha()
-    start_game_scaled = pygame.transform.smoothscale(start_game, (200, 100))
+    start_game_unpressed = pygame.image.load("start_button_unpressed.png").convert_alpha()
+    start_game_unpressed_scaled = pygame.transform.smoothscale(start_game_unpressed, (200, 100))
+    start_game_pressed = pygame.image.load("start_button_pressed.png").convert_alpha()
+    start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, (200, 100))
 
     back_button_size = (785, 490)
     back_button_scale = 7
-    back_button = pygame.image.load("back_button.png").convert_alpha()
-    back_button_scaled = pygame.transform.smoothscale(back_button, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
+    back_button_unpressed = pygame.image.load("back_button_unpressed.png").convert_alpha()
+    back_button_unpressed_scaled = pygame.transform.smoothscale(back_button_unpressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
+    back_button_pressed = pygame.image.load("back_button_pressed.png").convert_alpha()
+    back_button_pressed_scaled = pygame.transform.smoothscale(back_button_pressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
 
     letter_button_size = LETTER_BUTTON_FONT_SIZE * 2
 
-    LETTER_BUTTON_UNPRESSED = 0
-    LETTER_BUTTON_PRESSED_CORRECT = 1
-    LETTER_BUTTON_PRESSED_INCORRECT = 2
+    BUTTON_UNPRESSED = 0
+    BUTTON_PRESSED_CORRECT = 1 # for letter buttons
+    BUTTON_PRESSED_INCORRECT = 2 # for letter buttons
+    BUTTON_PRESSED = 3
 
     letter_button_unpressed = pygame.image.load("letter_button_unpressed.png").convert_alpha()
     letter_button_unpressed_scaled = pygame.transform.smoothscale(letter_button_unpressed, (letter_button_size, letter_button_size))
@@ -614,13 +650,13 @@ if __name__ == "__main__":
     LOGO_MAIN_ID = 'logo_main'
     LOGO_GAME_ID = 'logo_game'
 
-    start_game_scaled_rect = start_game_scaled.get_rect()
+    start_game_scaled_rect = start_game_unpressed_scaled.get_rect()
     start_button_function = game.start_new_game
-    start_button = MenuButton(START_BUTTON_ID, start_game_scaled, start_game_scaled_rect, start_button_function)
+    start_button = MenuButton(START_BUTTON_ID, start_game_pressed_scaled, start_game_unpressed_scaled, start_game_scaled_rect, start_button_function)
     
-    back_button_scaled_rect = back_button_scaled.get_rect()
+    back_button_scaled_rect = back_button_unpressed_scaled.get_rect()
     back_button_function = game.go_to_main_menu
-    back_button = MenuButton(BACK_BUTTON_ID, back_button_scaled, back_button_scaled_rect, back_button_function)
+    back_button_unpressed = MenuButton(BACK_BUTTON_ID, back_button_pressed_scaled, back_button_unpressed_scaled, back_button_scaled_rect, back_button_function)
     
     logo_main_object = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
     logo_game_object = ImageObject(LOGO_GAME_ID, game_menu_logo_scaled)
@@ -628,7 +664,7 @@ if __name__ == "__main__":
     game.add_object(MAIN_MENU, start_button)
     game.add_object(MAIN_MENU, logo_main_object)
     game.add_object(PLAY_MENU, logo_game_object)
-    game.add_object(PLAY_MENU, back_button)
+    game.add_object(PLAY_MENU, back_button_unpressed)
 
     game.reposition_objects((screen_size_x, screen_size_y))
 
