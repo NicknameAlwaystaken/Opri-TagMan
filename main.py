@@ -672,16 +672,16 @@ if __name__ == "__main__":
     heart_empty = pygame.image.load("empty_heart.png").convert_alpha()
     heart_empty_scaled = pygame.transform.smoothscale(heart_empty, heart_size)
     
-    start_button_size = (800, 500)
-    start_button_scale = 3
     start_game_unpressed = pygame.image.load("start_button_unpressed.png").convert_alpha()
+    start_button_size = start_game_unpressed.get_size()
+    start_button_scale = 3
     start_game_unpressed_scaled = pygame.transform.smoothscale(start_game_unpressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
     start_game_pressed = pygame.image.load("start_button_pressed.png").convert_alpha()
     start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
 
-    back_button_size = (400, 400)
-    back_button_scale = 5
     back_button_unpressed = pygame.image.load("x_back_button_unpressed.png").convert_alpha()
+    back_button_size = back_button_unpressed.get_size()
+    back_button_scale = 5
     back_button_unpressed_scaled = pygame.transform.smoothscale(back_button_unpressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
     back_button_pressed = pygame.image.load("x_back_button_pressed.png").convert_alpha()
     back_button_pressed_scaled = pygame.transform.smoothscale(back_button_pressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
