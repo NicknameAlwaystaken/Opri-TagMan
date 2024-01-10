@@ -72,7 +72,7 @@ class Game:
                     if object.id == START_BUTTON_ID:
                         object.rect.center = screen_size_x // 2, screen_size_y // 2
                     elif object.id == BACK_BUTTON_ID:
-                        object.rect.topright = screen_size_x - 10, top_margin
+                        object.rect.topright = screen_size_x, 0
                     elif object.id == LOGO_MAIN_ID:
                         object.center = screen_size_x // 2, 100
                     elif object.id == LOGO_GAME_ID:
@@ -515,10 +515,10 @@ def read_wordlist(file_name):
 def menu_action(event, game_state):
     event_key = event.key
     if event_key == pygame.K_ESCAPE and game_state == PLAY_MENU:
-        game.go_to_menu(game_state)
+        back_button.activate()
         return True
     if event_key == pygame.K_RETURN and game_state == MAIN_MENU:
-        game.go_to_menu(game_state)
+        start_button.activate()
         return True
     
     return False
@@ -679,11 +679,11 @@ if __name__ == "__main__":
     start_game_pressed = pygame.image.load("start_button_pressed.png").convert_alpha()
     start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
 
-    back_button_size = (800, 500)
+    back_button_size = (400, 400)
     back_button_scale = 5
-    back_button_unpressed = pygame.image.load("back_button_unpressed.png").convert_alpha()
+    back_button_unpressed = pygame.image.load("x_back_button_unpressed.png").convert_alpha()
     back_button_unpressed_scaled = pygame.transform.smoothscale(back_button_unpressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
-    back_button_pressed = pygame.image.load("back_button_pressed.png").convert_alpha()
+    back_button_pressed = pygame.image.load("x_back_button_pressed.png").convert_alpha()
     back_button_pressed_scaled = pygame.transform.smoothscale(back_button_pressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
 
     letter_button_size = LETTER_BUTTON_FONT_SIZE * 2
@@ -738,7 +738,7 @@ if __name__ == "__main__":
     back_button_scaled_rect = back_button_unpressed_scaled.get_rect()
     back_button_function = game.go_to_menu
     back_button_menu_pointer = MAIN_MENU
-    back_button_unpressed = MenuButton(BACK_BUTTON_ID, back_button_pressed_scaled, back_button_unpressed_scaled, back_button_scaled_rect, back_button_function, back_button_menu_pointer)
+    back_button = MenuButton(BACK_BUTTON_ID, back_button_pressed_scaled, back_button_unpressed_scaled, back_button_scaled_rect, back_button_function, back_button_menu_pointer)
     
     logo_main_object = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
     logo_game_object = ImageObject(LOGO_GAME_ID, game_menu_logo_scaled)
@@ -746,7 +746,7 @@ if __name__ == "__main__":
     game.add_object(MAIN_MENU, start_button)
     game.add_object(MAIN_MENU, logo_main_object)
     game.add_object(PLAY_MENU, logo_game_object)
-    game.add_object(PLAY_MENU, back_button_unpressed)
+    game.add_object(PLAY_MENU, back_button)
 
     game.reposition_objects((screen_size_x, screen_size_y))
 
