@@ -6,15 +6,16 @@ from typing import List, Dict, Type
 import random
 
 class Game:
-    def __init__(self, answer_object: AnswerObject, event_object: TextObject) -> None:
+    def __init__(self, answer_object: AnswerObject, event_object: TextObject, heart_object: HeartObject) -> None:
         self.answer = answer_object
         self.event = event_object
+        self.heart_object = heart_object
         self.freeze_input = False
         self.freeze_timeout = 400 # milliseconds
         self.word_list = []
         self.game_ended = False
         self.guessed_letters = []
-        self.current_menu = None
+        self.current_menu = MAIN_MENU
         self.letter_buttons: List[LetterButton] = []
         self.menu_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
             PLAY_MENU: {},
@@ -28,15 +29,16 @@ class Game:
 
         self.add_object(PLAY_MENU, answer_object)
         self.add_object(PLAY_MENU, event_object)
-        self.add_object(PLAY_MENU, answer_object.guesses_left_object)
+        self.add_object(PLAY_MENU, heart_object)
         self.add_object(PLAY_MENU, answer_object.guessed_letters_object)
 
         self.create_letter_buttons()
 
-    def update(self):
-        for object_list in self.menu_object_list[self.current_menu].values():
-            for object in object_list:
-                object.update()
+    def finish_transitioning(self):
+        self.current_menu = self.transitioning_to
+        self.is_menu_transitioning = False
+        self.freeze_input = False
+        pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, 0, 1)
 
     def reposition_objects(self, screen_size):
         self.reposition_menu_objects(screen_size)
@@ -55,7 +57,6 @@ class Game:
             answer_pos = 0.30
             event_pos = guessed_letters_pos
         event_screen_x_pos = 0.2
-        self.answer.guesses_left_object.topleft = 30, 20
         self.answer.guessed_letters_object.center = screen_size_x // 2, screen_size_y * guessed_letters_pos
         self.answer.center = screen_size_x // 2, screen_size_y * answer_pos
         self.event.center = screen_size_x * event_screen_x_pos, screen_size_y * event_pos 
@@ -70,11 +71,12 @@ class Game:
                     elif object.id == BACK_BUTTON_ID:
                         object.rect.topright = screen_size_x - 10, 20
                     elif object.id == LOGO_MAIN_ID:
-                        logo_main_object.center = screen_size_x // 2, 100
+                        object.center = screen_size_x // 2, 100
                     elif object.id == LOGO_GAME_ID:
-                        logo_game_object.center = screen_size_x // 2, 150
+                        object.center = screen_size_x // 2, 150
+                    elif object.id == HEART_ID:
+                        object.topleft = 30, 20
         
-
     def create_letter_buttons(self):
         for letter in string.ascii_uppercase:
             new_letter = LetterButton(letter, letter, LETTER_BUTTON_FONT)
@@ -111,18 +113,26 @@ class Game:
         self.go_to_menu(PLAY_MENU)
         self.event.set_text('')
         self.answer.set_answer(random.choice(self.word_list))
+        self.heart_object.set_max_health(8)
         for object in self.letter_buttons:
             object.change_button_state(BUTTON_UNPRESSED)
 
     def draw(self, screen: pygame.Surface):
-        for object_list in self.menu_object_list[self.current_menu].values():
-            for object in object_list:
-                object.draw(screen)
+        if self.current_menu in self.menu_object_list:
+            for object_list in self.menu_object_list[self.current_menu].values():
+                for object in object_list:
+                    object.draw(screen)
 
         if self.is_menu_transitioning and self.transition_screen is not None:
             ticks = (pygame.time.get_ticks() - self.transition_start_time)
             self.transition_screen.set_alpha(255 - (255 * ((self.transition_time - ticks) / self.transition_time)))
             screen.blit(self.transition_screen, self.transition_screen.get_rect())
+
+    def update(self):
+        if self.current_menu in self.menu_object_list:
+            for object_list in self.menu_object_list[self.current_menu].values():
+                for object in object_list:
+                    object.update()
 
     def get_letter_button(self, letter: str):
         letter = letter.upper()
@@ -220,6 +230,57 @@ class ImageObject(NonInteractiveObject):
             surface_rect.topleft = self.topleft
             screen.blit(self.surface, surface_rect)
 
+class HeartObject(ImageObject):
+    def __init__(self, id, heart_full: pygame.Surface, heart_half: pygame.Surface, heart_empty: pygame.Surface) -> None:
+        super().__init__(id, heart_empty)
+        self.image_list = {
+            HEART_FULL: heart_full.copy(),
+            HEART_HALF: heart_half.copy(),
+            HEART_EMPTY: heart_empty.copy()
+            }
+        self.heart_surface = None
+        self.health = 0
+
+    def set_max_health(self, max_health):
+        self.number_of_hearts = int((max_health / 2) + 0.5)
+        self.health = max_health
+
+        self._update_heart_surface()
+
+    def remove_health(self, number):
+        self.health -= number
+        self._update_heart_surface()
+
+    def get_health(self):
+        return self.health
+
+    def _update_heart_surface(self):
+        heart_x_spacing = 5
+        heart_x_size, heart_y_size = self.image_list[HEART_FULL].get_size()
+        self.heart_surface = pygame.Surface(((heart_x_size + heart_x_spacing) * self.number_of_hearts, heart_y_size), pygame.SRCALPHA)
+        health = self.health
+        heart_index = 0
+        heart_type = HEART_EMPTY
+        for _ in range(self.number_of_hearts):
+            if health >= HEART_FULL:
+                health -= HEART_FULL
+                heart_type = HEART_FULL
+
+            elif health >= HEART_HALF:
+                health -= HEART_HALF
+                heart_type = HEART_HALF
+
+            else:
+                heart_type = HEART_EMPTY
+
+            heart_image = self.image_list[heart_type]
+            heart_image_rect = heart_image.get_rect()
+            heart_image_rect.topleft = ((heart_x_size + heart_x_spacing) * heart_index, 0)
+            self.heart_surface.blit(heart_image, heart_image_rect)
+            heart_index += 1
+
+        self.surface = self.heart_surface
+
 class TextObject(NonInteractiveObject):
     def __init__(self, id, font: pygame.font.Font, color = None) -> None:
         super().__init__(id)
@@ -267,22 +328,16 @@ class TextObject(NonInteractiveObject):
             screen.blit(self.surface, surface_rect)
 
 class AnswerObject(TextObject):
-    def __init__(self, id, font: pygame.font.Font, color, guesses_left_object: TextObject, guessed_letters_object: TextObject) -> None:
+    def __init__(self, id, font: pygame.font.Font, color, guessed_letters_object: TextObject) -> None:
         super().__init__(id, font, color)
-        self.guesses_left_object = guesses_left_object
         self.guessed_letters_object = guessed_letters_object
         self.draw_text = ''
-        self.max_wrong_guesses = 9
-        self.wrong_guesses = 0
-        self.guesses_left_text = f"Wrong guesses left: "
 
     def set_answer(self, answer: str):
         self.text = answer
         self.draw_text = ''.join(['_' if letter in string.ascii_uppercase else letter for letter in answer.upper()])
         self.temp_color = None
         self.guessed_letters_object.set_text('')
-        self.wrong_guesses = 0
-        self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
         self._update_surface()
 
     def set_text(self, text, color=None):
@@ -307,11 +362,10 @@ class AnswerObject(TextObject):
         letter_button = game.get_letter_button(letter)
         if letter not in correct_answer:
             color = WRONG_COLOR
-            self.wrong_guesses += 1
-            self.guesses_left_object.set_text(self.guesses_left_text + str(self.max_wrong_guesses - self.wrong_guesses))
+            game.heart_object.remove_health(1)
             letter_button.change_button_state(BUTTON_PRESSED_INCORRECT)
             game.event.set_text(f"'{letter}' not found!", color)
-            if self.wrong_guesses >= self.max_wrong_guesses:
+            if game.heart_object.get_health() <= 0:
                 game.game_lost()
             return
         
@@ -483,15 +537,10 @@ async def main():
                 game.reposition_objects(screen.get_size())
 
             if event.type == TRANSITION_TIMER:
-                game.current_menu = game.transitioning_to
-                game.transitioning_to = None
-                game.is_menu_transitioning = False
-                game.freeze_input = False
-                pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, 0, 1)
+                game.finish_transitioning()
 
             if game.game_ended and event.type == PAUSE_AFTER_WIN_TIMER:
                 game.freeze_input = False
-                game.answer.guesses_left_object.set_text("Continue...")
 
             if game.freeze_input: # I want to introduce short pause so people don't accidentally continue after pressing multiple buttons at end of the game
                 continue
@@ -579,7 +628,6 @@ if __name__ == "__main__":
     LETTER_BUTTON_FONT_SIZE = 40
     ANSWER_FONT_SIZE = 40
     EVENT_FONT_SIZE = 20
-    GUESSES_LEFT_SIZE = 20
     GUESSED_LETTERS_SIZE = 20
 
     FONT_FILE = "MartianMono-VariableFont_wdth,wght.ttf"
@@ -590,7 +638,6 @@ if __name__ == "__main__":
     LETTER_BUTTON_FONT = pygame.font.SysFont(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
     ANSWER_FONT = pygame.font.Font(FONT_FILE, ANSWER_FONT_SIZE)
     EVENT_FONT = pygame.font.Font(FONT_FILE, EVENT_FONT_SIZE)
-    GUESSES_LEFT_FONT = pygame.font.Font(FONT_FILE, GUESSES_LEFT_SIZE)
     GUESSED_LETTERS_FONT = pygame.font.Font(FONT_FILE, GUESSED_LETTERS_SIZE)
 
     oprimagazine_logo = pygame.image.load("oprimagazine_logo.png").convert_alpha()
@@ -598,10 +645,23 @@ if __name__ == "__main__":
     main_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo, 0, 0.4)
     game_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo, 0, 0.3)
     
+    HEART_FULL = 2
+    HEART_HALF = 1
+    HEART_EMPTY = 0
+
+    heart_size = (50, 50)
+    heart_full = pygame.image.load("full_heart.png").convert_alpha()
+    heart_full_scaled = pygame.transform.smoothscale(heart_full, heart_size)
+    heart_half = pygame.image.load("half_heart.png").convert_alpha()
+    heart_half_scaled = pygame.transform.smoothscale(heart_half, heart_size)
+    heart_empty = pygame.image.load("empty_heart.png").convert_alpha()
+    heart_empty_scaled = pygame.transform.smoothscale(heart_empty, heart_size)
+    
+    start_game_size = (200, 100)
     start_game_unpressed = pygame.image.load("start_button_unpressed.png").convert_alpha()
-    start_game_unpressed_scaled = pygame.transform.smoothscale(start_game_unpressed, (200, 100))
+    start_game_unpressed_scaled = pygame.transform.smoothscale(start_game_unpressed, start_game_size)
     start_game_pressed = pygame.image.load("start_button_pressed.png").convert_alpha()
-    start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, (200, 100))
+    start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, start_game_size)
 
     back_button_size = (785, 490)
     back_button_scale = 7
@@ -635,15 +695,19 @@ if __name__ == "__main__":
 
     TRANSITION_TIMER = pygame.USEREVENT
 
-    guesses_left_object = TextObject("guesses_left", GUESSES_LEFT_FONT, BLACK_COLOR)
+    HEART_ID = 'heart'
+    ANSWER_ID = 'answer'
+    EVENT_ID = 'event'
 
     guessed_letters_object = TextObject("guessed_letters", GUESSED_LETTERS_FONT, BLACK_COLOR)
 
-    answer_object = AnswerObject("answer", ANSWER_FONT, BLACK_COLOR, guesses_left_object, guessed_letters_object)
+    answer_object = AnswerObject(ANSWER_ID, ANSWER_FONT, BLACK_COLOR, guessed_letters_object)
 
-    event_object = TextObject("event", EVENT_FONT, BLACK_COLOR)
+    event_object = TextObject(EVENT_ID, EVENT_FONT, BLACK_COLOR)
 
-    game = Game(answer_object, event_object)
+    heart_object = HeartObject(HEART_ID, heart_full_scaled, heart_half_scaled, heart_empty_scaled)
+
+    game = Game(answer_object, event_object, heart_object)
 
     START_BUTTON_ID = 'start_button'
     BACK_BUTTON_ID = 'back_button'
@@ -668,6 +732,6 @@ if __name__ == "__main__":
 
     game.reposition_objects((screen_size_x, screen_size_y))
 
-    game.current_menu = MAIN_MENU
+    #print(pygame.font.get_fonts())
 
     asyncio.run(main())
