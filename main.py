@@ -5,20 +5,25 @@ import string
 from typing import List, Dict, Type
 import random
 
+from pygame.font import Font
+
 class Game:
-    def __init__(self, answer_object: AnswerObject, heart_object: HeartObject) -> None:
+    def __init__(self, answer_object: AnswerObject, heart_object: HeartObject, score_object: Score) -> None:
         self.answer = answer_object
         self.heart_object = heart_object
-        self.freeze_input = False
-        self.freeze_timeout = 400 # milliseconds
+        self.score_object = score_object
+        self.input_frozen = False
+        self.freeze_time = 400 # milliseconds
+        self.freeze_time_start = 0
         self.word_list = []
-        self.game_ended = False
+        self.game_ended = NOT_ENDED
         self.guessed_letters = []
         self.current_menu = MAIN_MENU
         self.letter_buttons: List[LetterButton] = []
         self.menu_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
             PLAY_MENU: {},
-            MAIN_MENU: {}
+            MAIN_MENU: {},
+            SCORE_MENU: {}
             }
         self.transition_screen = None
         self.menu_transitioning_state = NO_TRANSITION
@@ -30,8 +35,10 @@ class Game:
 
         self.add_object(PLAY_MENU, answer_object)
         self.add_object(PLAY_MENU, heart_object)
+        self.add_object(SCORE_MENU, score_object)
 
         self.create_letter_buttons()
+        self.score_object.set_score(0)
 
     def reposition_objects(self, screen_size):
         self.reposition_menu_objects(screen_size)
@@ -53,15 +60,25 @@ class Game:
         for menu in self.menu_object_list.values():
             for object_list in menu.values():
                 for object in object_list:
-                    if object.id == START_BUTTON_ID:
+                    # SCORE_MENU
+                    if object.id == NEXT_BUTTON_ID:
+                        object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
+                    elif object.id == GAME_OVER_ID:
+                        object.center = screen_size_x // 2, screen_size_y // 3 * 1
+                    elif object.id == YOU_WIN_ID:
+                        object.center = screen_size_x // 2, screen_size_y // 3 * 1
+                    elif object.id == SCORE_ID:
+                        object.center = screen_size_x // 2, screen_size_y // 2
+                    # START_MENU
+                    elif object.id == START_BUTTON_ID:
                         object.rect.center = screen_size_x // 2, screen_size_y // 2
+                    elif object.id == LOGO_MAIN_ID:
+                        object.center = screen_size_x // 2, 100
+                    # GAME_MENU
                     elif object.id == BACK_BUTTON_ID:
-                        #object.rect.topright = screen_size_x, 0
                         game_logo_surface = logo_game_object.surface
                         game_logo_rect = game_logo_surface.get_rect()
                         object.rect.midright = screen_size_x - 10, game_logo_rect.center[1] - 10
-                    elif object.id == LOGO_MAIN_ID:
-                        object.center = screen_size_x // 2, 100
                     elif object.id == LOGO_GAME_ID:
                         object.topleft = 0, 0
                     elif object.id == HEART_ID:
@@ -92,7 +109,6 @@ class Game:
 
     def transition_in_finish(self):
         self.transition_out_start_time = pygame.time.get_ticks()
-        pygame.time.set_timer(TRANSITION_OUT_TIMER, self.transition_out_time, 1)
         self.menu_transitioning_state = TRANSITION_OUT
         self.current_menu = self.transitioning_to
         if self.current_menu == PLAY_MENU:
@@ -100,17 +116,16 @@ class Game:
 
     def transition_out_finish(self):
         self.menu_transitioning_state = NO_TRANSITION
-        self.freeze_input = False
+        self.input_frozen = False
 
     def start_menu_transition(self):
         self.transition_screen = pygame.Surface(screen.get_size())
-        self.transition_screen.fill(MAIN_GOLD_BROWN_COLOR)
-        pygame.time.set_timer(TRANSITION_IN_TIMER, self.transition_in_time, 1)
+        self.transition_screen.fill(MAIN_OKRA_COLOR)
         self.transition_in_start_time = pygame.time.get_ticks()
-        game.freeze_input = True
+        game.input_frozen = True
 
     def start_new_game(self):
-        self.game_ended = False
+        self.game_ended = NOT_ENDED
         self.answer.set_answer(random.choice(self.word_list))
         self.heart_object.set_max_health(8)
         for object in self.letter_buttons:
@@ -132,11 +147,29 @@ class Game:
             screen.blit(self.transition_screen, self.transition_screen.get_rect())
 
     def update(self):
+        ticks = pygame.time.get_ticks()
+        if self.menu_transitioning_state != NO_TRANSITION:
+
+            if self.menu_transitioning_state == TRANSITION_IN:
+                elapsed_time = ticks - self.transition_in_start_time
+                if elapsed_time >= self.transition_in_time:
+                    self.transition_in_finish()
+
+            elif self.menu_transitioning_state == TRANSITION_OUT:
+                elapsed_time = ticks - self.transition_out_start_time
+                if elapsed_time >= self.transition_in_time:
+                    self.transition_out_finish()
+
         if self.current_menu in self.menu_object_list:
             for object_list in self.menu_object_list[self.current_menu].values():
                 for object in object_list:
                     object.update()
 
+        if self.input_frozen:
+            elapsed_time = ticks - self.freeze_time_start
+            if elapsed_time >= self.freeze_time:
+                self.input_frozen = False
+            
     def get_letter_button(self, letter: str):
         letter = letter.upper()
         return [letter_button for letter_button in self.letter_buttons if letter_button.letter.upper() == letter][0]
@@ -177,15 +210,20 @@ class Game:
             self.menu_object_list[game_state][object.object_type] = []
         self.menu_object_list[game_state][object.object_type].append(object)
 
+    def freeze_input(self):
+        self.input_frozen = True
+        self.freeze_time_start = pygame.time.get_ticks()
+
     def game_won(self):
-        self.game_ended = True
-        self.freeze_input = True
-        pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, self.freeze_timeout, 1)
+        self.score_object.add_score(1)
+        self.game_ended = GAME_WON
+        self.freeze_input()
+        self.go_to_menu(SCORE_MENU)
 
     def game_lost(self):
-        self.game_ended = True
-        self.freeze_input = True
-        pygame.time.set_timer(PAUSE_AFTER_WIN_TIMER, self.freeze_timeout, 1)
+        self.game_ended = GAME_LOST
+        self.freeze_input()
+        self.go_to_menu(SCORE_MENU)
 
 class GameObject:
     def __init__(self, id: str) -> None:
@@ -220,6 +258,10 @@ class ImageObject(NonInteractiveObject):
         self.surface = image
 
     def draw(self, screen):
+        if self.id == YOU_WIN_ID and game.game_ended != GAME_WON:
+            return
+        if self.id == GAME_OVER_ID and game.game_ended != GAME_LOST:
+            return
         if self.surface is not None and self.center is not None:
             surface_rect = self.surface.get_rect()
             surface_rect.center = self.center
@@ -526,6 +568,20 @@ class LetterButton(ButtonObject):
     def activate(self):
         game.answer.check_letter(self.letter)
 
+class Score(TextObject):
+    def __init__(self, id, font: Font, color=None) -> None:
+        super().__init__(id, font, color)
+        self.score = 0
+        self.text_template = f"SCORE: "
+
+    def set_score(self, amount):
+        self.score = amount
+        self.set_text(self.text_template + str(self.score))
+
+    def add_score(self, amount):
+        self.score += amount
+        self.set_text(self.text_template + str(self.score))
+
 def create_keyboard_zone(screen_size):
     screen_size_x, screen_size_y = screen_size
     minimum_landscape_keyboard_x_size = 450
@@ -567,6 +623,9 @@ def menu_action(event, game_state):
     if event_key == pygame.K_RETURN and game_state == MAIN_MENU:
         start_button.activate()
         return True
+    if event_key == pygame.K_RETURN and game_state == SCORE_MENU:
+        next_button.activate()
+        return True
     
     return False
 
@@ -574,7 +633,7 @@ async def main():
     list_of_words = read_wordlist(wordlist_file)
     game.set_word_selection(list_of_words)
 
-    game.freeze_input = False
+    game.input_frozen = False
 
     running = True
 
@@ -588,23 +647,11 @@ async def main():
             if event.type == pygame.VIDEORESIZE:
                 game.reposition_objects(screen.get_size())
 
-            if event.type == TRANSITION_IN_TIMER:
-                game.transition_in_finish()
-
-            if event.type == TRANSITION_OUT_TIMER:
-                game.transition_out_finish()
-
-            if game.game_ended and event.type == PAUSE_AFTER_WIN_TIMER:
-                game.freeze_input = False
-
-            if game.freeze_input: # I want to introduce short pause so people don't accidentally continue after pressing multiple buttons at end of the game
+            if game.input_frozen: # I want to introduce short pause so people don't accidentally continue after pressing multiple buttons at end of the game
                 continue
 
             if event.type == pygame.KEYDOWN:
                 event_key = event.key
-                if game.game_ended: # make game continue after winning only once user gives input
-                    game.go_to_menu(PLAY_MENU)
-                    continue
 
                 if not menu_action(event, game.current_menu):
                     if game.current_menu == PLAY_MENU:
@@ -619,10 +666,6 @@ async def main():
 
             
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if game.game_ended: # make game continue after winning only once user gives input
-                    game.go_to_menu(PLAY_MENU)
-                    continue
-
                 list_of_objects = game.get_objects(BUTTON_OBJECT_TYPE)
                 if list_of_objects is not None:
                     for object in game.get_objects(BUTTON_OBJECT_TYPE):
@@ -645,11 +688,13 @@ if __name__ == "__main__":
     
     screen_size_x, screen_size_y = (1024, 768)
 
-    display_info = pygame.display.Info()
-    if screen_size_x <= display_info.current_w and screen_size_y <= display_info.current_h:
-        screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
-    else:
-        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.RESIZABLE)
+    screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
+
+    # display_info = pygame.display.Info()
+    # if screen_size_x <= display_info.current_w and screen_size_y <= display_info.current_h:
+    #     screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
+    # else:
+    #     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.RESIZABLE)
 
 
     TICK_SPEED = 60
@@ -657,6 +702,7 @@ if __name__ == "__main__":
     # gamestates
     PLAY_MENU = 'play_menu_state'
     MAIN_MENU = 'main_menu_state'
+    SCORE_MENU = 'score_menu_state'
 
     LIGHT_BLUE_COLOR = (138, 160, 242)
     #CORRECT_COLOR = (16, 140, 40)
@@ -668,10 +714,10 @@ if __name__ == "__main__":
 
     # Main game colors
     MAIN_GREY_COLOR = (96, 96, 96)
-    MAIN_GOLD_BROWN_COLOR = (178, 134, 54)
+    MAIN_OKRA_COLOR = (178, 134, 54)
     MAIN_PURPLE_COLOR = (84, 37, 90)
 
-    ANSWER_FONT_COLOR = CREAM_COLOR
+    SCORE_FONT_COLOR = BLACK_COLOR
     ANSWER_FONT_COLOR = MAIN_PURPLE_COLOR
     LETTER_BUTTON_COLOR = CREAM_COLOR
 
@@ -687,18 +733,18 @@ if __name__ == "__main__":
     DEFAULT_FONT_SIZE = 50
     LETTER_BUTTON_FONT_SIZE = 40
     ANSWER_FONT_SIZE = 75
-    GUESSED_LETTERS_SIZE = 20
+    SCORE_FONT_SIZE = 50
 
     FONT_FILE = "MartianMono-VariableFont_wdth,wght.ttf"
 
-    ARIAL_BLACK = 'arialblack'
+    ARIAL_BLACK = 'ariblk.ttf'
     CONSOLAS_BOLD = 'consolab.ttf'
 
     DEFAULT_FONT = pygame.font.Font(FONT_FILE, DEFAULT_FONT_SIZE)
-    LETTER_BUTTON_FONT = pygame.font.SysFont(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
+    LETTER_BUTTON_FONT = pygame.font.Font(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
     ANSWER_FONT = pygame.font.Font(CONSOLAS_BOLD, ANSWER_FONT_SIZE)
     ANSWER_FONT.set_bold(True)
-    GUESSED_LETTERS_FONT = pygame.font.Font(FONT_FILE, GUESSED_LETTERS_SIZE)
+    SCORE_FONT = pygame.font.Font(ARIAL_BLACK, SCORE_FONT_SIZE)
 
     oprimagazine_logo_original = pygame.image.load("oprimagazine_logo.png").convert_alpha()
     oprimagazine_logo_smallest = pygame.image.load("logo_y_100.png").convert_alpha()
@@ -710,6 +756,13 @@ if __name__ == "__main__":
     game_menu_y_size = 100
     game_menu_scale = 1 / (logo_y_size / game_menu_y_size)
     game_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo_smallest, 0, game_menu_scale)
+
+    
+    game_over_text = pygame.image.load("game_over_text.png").convert_alpha()
+    game_over_text_scaled = pygame.transform.smoothscale(game_over_text, game_over_text.get_size())
+
+    you_win_text = pygame.image.load("you_win_text.png").convert_alpha()
+    you_win_text_scaled = pygame.transform.smoothscale(you_win_text, you_win_text.get_size())
     
     HEART_FULL = 2
     HEART_HALF = 1
@@ -736,6 +789,14 @@ if __name__ == "__main__":
     back_button_unpressed_scaled = pygame.transform.smoothscale(back_button_unpressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
     back_button_pressed = pygame.image.load("x_back_button_pressed.png").convert_alpha()
     back_button_pressed_scaled = pygame.transform.smoothscale(back_button_pressed, (int(back_button_size[0] / back_button_scale), int(back_button_size[1] / back_button_scale)))
+
+    next_button_unpressed = pygame.image.load("next_button_unpressed.png").convert_alpha()
+    next_button_size = next_button_unpressed.get_size()
+    next_button_size = (280, 130)
+    next_button_scale = 1
+    next_button_unpressed_scaled = pygame.transform.smoothscale(next_button_unpressed, (int(next_button_size[0] / next_button_scale), int(next_button_size[1] / next_button_scale)))
+    next_button_pressed = pygame.image.load("next_button_pressed.png").convert_alpha()
+    next_button_pressed_scaled = pygame.transform.smoothscale(next_button_pressed, (int(next_button_size[0] / next_button_scale), int(next_button_size[1] / next_button_scale)))
 
     letter_button_size = LETTER_BUTTON_FONT_SIZE * 2
 
@@ -771,19 +832,28 @@ if __name__ == "__main__":
     CORRECT_LETTER_ANIMATION = 0
     WRONG_LETTER_ANIMATION = 1
 
+    NOT_ENDED = -1
+    GAME_LOST = 0
+    GAME_WON = 1
+
     HEART_ID = 'heart'
     ANSWER_ID = 'answer'
+    SCORE_ID = 'score'
 
     answer_object = AnswerObject(ANSWER_ID, ANSWER_FONT, ANSWER_FONT_COLOR)
+    score_object = Score(SCORE_ID, SCORE_FONT, SCORE_FONT_COLOR)
 
     heart_object = HeartObject(HEART_ID, heart_full_scaled, heart_half_scaled, heart_empty_scaled)
 
-    game = Game(answer_object, heart_object)
+    game = Game(answer_object, heart_object, score_object)
 
     START_BUTTON_ID = 'start_button'
     BACK_BUTTON_ID = 'back_button'
+    NEXT_BUTTON_ID = 'next_button'
     LOGO_MAIN_ID = 'logo_main'
     LOGO_GAME_ID = 'logo_game'
+    GAME_OVER_ID = 'game_over'
+    YOU_WIN_ID = 'you_win'
 
     start_game_scaled_rect = start_game_unpressed_scaled.get_rect()
     start_button_function = game.go_to_menu
@@ -795,13 +865,24 @@ if __name__ == "__main__":
     back_button_menu_pointer = MAIN_MENU
     back_button = MenuButton(BACK_BUTTON_ID, back_button_pressed_scaled, back_button_unpressed_scaled, back_button_scaled_rect, back_button_function, back_button_menu_pointer)
     
+    next_button_scaled_rect = next_button_unpressed_scaled.get_rect()
+    next_button_function = game.go_to_menu
+    next_button_menu_pointer = PLAY_MENU
+    next_button = MenuButton(NEXT_BUTTON_ID, next_button_pressed_scaled, next_button_unpressed_scaled, next_button_scaled_rect, next_button_function, next_button_menu_pointer)
+    
     logo_main_object = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
     logo_game_object = ImageObject(LOGO_GAME_ID, game_menu_logo_scaled)
+
+    game_over_object = ImageObject(GAME_OVER_ID, game_over_text_scaled)
+    you_win_object = ImageObject(YOU_WIN_ID, you_win_text_scaled)
 
     game.add_object(MAIN_MENU, start_button)
     game.add_object(MAIN_MENU, logo_main_object)
     game.add_object(PLAY_MENU, logo_game_object)
     game.add_object(PLAY_MENU, back_button)
+    game.add_object(SCORE_MENU, next_button)
+    game.add_object(SCORE_MENU, game_over_object)
+    game.add_object(SCORE_MENU, you_win_object)
 
     game.reposition_objects((screen_size_x, screen_size_y))
 
