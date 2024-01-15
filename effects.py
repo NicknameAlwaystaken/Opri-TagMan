@@ -170,9 +170,9 @@ class Explosion(EffectInstance):
         self.particle_list = []
         self.max_particles = 15
         self.min_particles = 10
-        self.max_speed = 3
-        self.min_speed = 1
-        self.particle_amount = random.randrange(self.min_particles, self.max_particles)
+        self.max_speed = 6
+        self.min_speed = 4
+        self.particle_amount = random.randrange(self.min_particles, self.max_particles + 1)
         angle_increment = 360 / self.particle_amount
         for i in range(self.particle_amount):
             random_angle_shift = random.randrange(0, angle_increment // 2)
@@ -184,24 +184,27 @@ class Explosion(EffectInstance):
         
     def create_particle(self, position, color, direction):
         surface_size = 3
-        firework_size = surface_size // 2
+        firework_size = 1
         firework_surface = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
-        pygame.gfxdraw.aacircle(firework_surface, firework_size, firework_size, firework_size, color)
-        pygame.gfxdraw.filled_circle(firework_surface, firework_size, firework_size, firework_size, color)
-        firework_rect = firework_surface.get_rect()
-        firework_rect.center = position
+        pygame.draw.circle(firework_surface, color, (firework_size, firework_size), firework_size)
         speed = random.randrange(self.min_speed * 10, self.max_speed * 10) / 10
-        return {"surface": firework_surface, "rect": firework_rect, "direction": direction, "speed": speed}
+        return {"surface": firework_surface, "velocity": {'x': direction[0] * speed, 'y': direction[1] * speed}, "position": {'x': position[0], 'y': position[1]}}
 
     def update(self):
+        air_drag = 0.98
+        gravity = 0.1
+        ticks = pygame.time.get_ticks()
         for particle in self.particle_list:
-            dx, dy = particle["direction"]
-            particle["rect"].x += dx * particle["speed"]
-            particle["rect"].y += dy * particle["speed"]
+            elapsed_time = (ticks - self.start_age) / 1000
+            particle["velocity"]['y'] += gravity * elapsed_time**2
+            particle["velocity"]['x'] *= air_drag
+            particle["velocity"]['y'] *= air_drag
+            particle["position"]['x'] += particle["velocity"]['x']
+            particle["position"]['y'] += particle["velocity"]['y']
 
     def draw(self, screen: pygame.Surface):
         for particle in self.particle_list:
-            screen.blit(particle['surface'], particle['rect'])
+            screen.blit(particle['surface'], (int(particle["position"]['x']), int(particle["position"]['y'])))
             
 
 class FireworkInstance(EffectInstance):
@@ -213,8 +216,7 @@ class FireworkInstance(EffectInstance):
         surface_size = 9
         firework_size = surface_size // 2
         firework_surface = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
-        pygame.gfxdraw.aacircle(firework_surface, firework_size, firework_size, firework_size, color)
-        pygame.gfxdraw.filled_circle(firework_surface, firework_size, firework_size, firework_size, color)
+        pygame.draw.circle(firework_surface, color, (firework_size, firework_size), firework_size)
         firework_rect = firework_surface.get_rect()
         firework_rect.center = position
         self.surface = firework_surface
