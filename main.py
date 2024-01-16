@@ -7,6 +7,7 @@ import random
 random.seed()
 import os
 from effects import Fireworks, EffectController
+import webbrowser
 
 from pygame.font import Font
 
@@ -76,18 +77,20 @@ class Game:
                         object.center = screen_size_x // 2, screen_size_y // 2
                     # START_MENU
                     elif object.id == START_BUTTON_ID:
-                        object.rect.center = screen_size_x // 2, screen_size_y // 2
+                        object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
                     elif object.id == LOGO_MAIN_ID:
-                        object.center = screen_size_x // 2, 100
+                        object.center = screen_size_x // 2, screen_size_y // 3 * 1
                     # GAME_MENU
                     elif object.id == BACK_BUTTON_ID:
-                        game_logo_surface = logo_game_object.surface
+                        game_logo_surface = logo_game_button.surface
                         game_logo_rect = game_logo_surface.get_rect()
                         object.rect.midright = screen_size_x - 10, game_logo_rect.center[1] - 10
                     elif object.id == LOGO_GAME_ID:
                         object.topleft = 0, 0
+                    elif object.id == LOGO_BACKGROUND_ID:
+                        object.center = screen_size_x // 2, screen_size_y // 2
                     elif object.id == HEART_ID:
-                        game_logo_surface = logo_game_object.surface
+                        game_logo_surface = logo_game_button.surface
                         game_logo_rect = game_logo_surface.get_rect()
                         object.center = game_logo_rect.center[0], game_logo_surface.get_size()[1] + object.surface.get_size()[1] / 2
         
@@ -112,6 +115,9 @@ class Game:
         self.menu_transitioning_state = TRANSITION_IN
         self.start_menu_transition()
         score_menu_effects.deactivate_effects()
+
+    def go_to_website(self, link):
+        webbrowser.open(link)
 
     def transition_in_finish(self):
         self.transition_out_start_time = pygame.time.get_ticks()
@@ -638,8 +644,11 @@ def menu_action(event, game_state):
     if event_key == pygame.K_RETURN and game_state == MAIN_MENU:
         start_button.activate()
         return True
-    if event_key == pygame.K_RETURN and game_state == SCORE_MENU:
+    if event_key == pygame.K_RETURN and game_state == SCORE_MENU and game.game_ended == GAME_WON:
         next_button.activate()
+        return True
+    if event_key == pygame.K_RETURN and game_state == SCORE_MENU and game.game_ended == GAME_LOST:
+        try_again_button.activate()
         return True
     
     return False
@@ -709,6 +718,11 @@ if __name__ == "__main__":
 
     screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.DOUBLEBUF | pygame.SCALED)
 
+
+    IMAGE_FOLDER = 'images'
+    icon_image = pygame.image.load("favicon.png").convert_alpha()
+    pygame.display.set_icon(icon_image)
+
     # display_info = pygame.display.Info()
     # if screen_size_x <= display_info.current_w and screen_size_y <= display_info.current_h:
     #     screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.DOUBLEBUF)
@@ -768,14 +782,14 @@ if __name__ == "__main__":
     ANSWER_FONT.set_bold(True)
     SCORE_FONT = pygame.font.Font(ARIAL_BLACK, SCORE_FONT_SIZE)
 
-    IMAGE_FOLDER = 'images'
+    game_logo_no_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_logo_no_text.png")).convert_alpha()
+    scale_amount = (screen_size_x / 1.6) / game_logo_no_text.get_size()[0]
+    game_logo_no_text_scaled = pygame.transform.rotozoom(game_logo_no_text, 0, scale_amount)
 
-    oprimagazine_logo_original = pygame.image.load(os.path.join(IMAGE_FOLDER, "oprimagazine_logo.png")).convert_alpha()
+    game_logo = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_logo.png")).convert_alpha()
+    main_menu_logo_scaled = pygame.transform.rotozoom(game_logo, 0, 0.5)
+
     oprimagazine_logo_smallest = pygame.image.load(os.path.join(IMAGE_FOLDER, "logo_y_100.png")).convert_alpha()
-
-    GAME_TOP_MARGIN = 100
-    
-    main_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo_original, 0, 0.4)
     logo_y_size = oprimagazine_logo_smallest.get_size()[1]
     game_menu_y_size = 100
     game_menu_scale = 1 / (logo_y_size / game_menu_y_size)
@@ -802,7 +816,7 @@ if __name__ == "__main__":
     
     start_game_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "start_button_unpressed.png")).convert_alpha()
     start_button_size = start_game_unpressed.get_size()
-    start_button_scale = 3
+    start_button_scale = 5
     start_game_unpressed_scaled = pygame.transform.smoothscale(start_game_unpressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
     start_game_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "start_button_pressed.png")).convert_alpha()
     start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
@@ -816,15 +830,18 @@ if __name__ == "__main__":
 
     next_button_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "next_button_unpressed.png")).convert_alpha()
     next_button_size = next_button_unpressed.get_size()
-    next_button_scale = 1 / 0.27
+    next_button_scale = 1 / (135 / next_button_size[1])
     next_button_unpressed_scaled = pygame.transform.smoothscale(next_button_unpressed, (int(next_button_size[0] / next_button_scale), int(next_button_size[1] / next_button_scale)))
+
     next_button_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "next_button_pressed.png")).convert_alpha()
     next_button_pressed_scaled = pygame.transform.smoothscale(next_button_pressed, (int(next_button_size[0] / next_button_scale), int(next_button_size[1] / next_button_scale)))
 
     try_again_button_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "try_again_button_unpressed.png")).convert_alpha()
     try_again_button_size = try_again_button_unpressed.get_size()
-    try_again_button_scale = 1 / 0.22
+    print(f"{try_again_button_size = }")
+    try_again_button_scale = 1 / (135 / try_again_button_size[1])
     try_again_button_unpressed_scaled = pygame.transform.smoothscale(try_again_button_unpressed, (int(try_again_button_size[0] / try_again_button_scale), int(try_again_button_size[1] / try_again_button_scale)))
+    
     try_again_button_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "try_again_button_pressed.png")).convert_alpha()
     try_again_button_pressed_scaled = pygame.transform.smoothscale(try_again_button_pressed, (int(try_again_button_size[0] / try_again_button_scale), int(try_again_button_size[1] / try_again_button_scale)))
 
@@ -883,6 +900,7 @@ if __name__ == "__main__":
     TRY_AGAIN_BUTTON_ID = 'try_again_button'
     LOGO_MAIN_ID = 'logo_main'
     LOGO_GAME_ID = 'logo_game'
+    LOGO_BACKGROUND_ID = 'logo_background'
     GAME_OVER_ID = 'game_over'
     YOU_WIN_ID = 'you_win'
 
@@ -905,17 +923,26 @@ if __name__ == "__main__":
     try_again_button_function = game.go_to_menu
     try_again_button_menu_pointer = PLAY_MENU
     try_again_button = MenuButton(TRY_AGAIN_BUTTON_ID, try_again_button_pressed_scaled, try_again_button_unpressed_scaled, try_again_button_scaled_rect, try_again_button_function, try_again_button_menu_pointer)
+
+    logo_main_image = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
     
-    logo_main_object = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
-    logo_game_object = ImageObject(LOGO_GAME_ID, game_menu_logo_scaled)
+    logo_game_button_scaled_rect = game_menu_logo_scaled.get_rect()
+    logo_game_button_function = game.go_to_website
+    logo_game_button_menu_pointer = r"https://www.oprimagazine.com/"
+    logo_game_button = MenuButton(LOGO_GAME_ID, game_menu_logo_scaled, game_menu_logo_scaled, logo_game_button_scaled_rect, logo_game_button_function, logo_game_button_menu_pointer)
+    
+    game_logo_no_text_scaled.set_alpha(10)
+    game_logo_no_text_object = ImageObject(LOGO_BACKGROUND_ID, game_logo_no_text_scaled)
 
     game_over_object = ImageObject(GAME_OVER_ID, game_over_text_scaled)
     you_win_object = ImageObject(YOU_WIN_ID, you_win_text_scaled)
 
     game.add_object(MAIN_MENU, start_button)
-    game.add_object(MAIN_MENU, logo_main_object)
-    game.add_object(PLAY_MENU, logo_game_object)
+    game.add_object(MAIN_MENU, logo_main_image)
+    game.add_object(MAIN_MENU, logo_game_button)
+    game.add_object(PLAY_MENU, logo_game_button)
     game.add_object(PLAY_MENU, back_button)
+    game.add_object(PLAY_MENU, game_logo_no_text_object)
     game.add_object(SCORE_MENU, next_button)
     game.add_object(SCORE_MENU, try_again_button)
     game.add_object(SCORE_MENU, game_over_object)

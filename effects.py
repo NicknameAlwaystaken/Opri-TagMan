@@ -98,7 +98,7 @@ class Fireworks(Effect):
         self.explosion_object.init_particles()
 
     def new_instance(self):
-        x_padding = 50
+        x_padding = 100
         screen_x, screen_y = self.screen.get_size()
         random_x = random.randrange(x_padding, screen_x - x_padding)
         lifetime = random.randrange(self.min_lifetime, self.max_lifetime)
@@ -218,7 +218,7 @@ class Explosion:
         
     def init_particles(self):
         if not self.particle_list:
-            particles_to_prerender = 150
+            particles_to_prerender = self.particle_amount * 5
             angle_increment = 360 / self.particle_amount
             for i in range(particles_to_prerender):
                 random_angle_shift = random.randrange(0, angle_increment // 2)
