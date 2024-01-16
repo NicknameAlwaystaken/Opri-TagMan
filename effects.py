@@ -4,6 +4,9 @@ import pygame.gfxdraw
 import random
 from typing import List, Dict
 import math
+from itertools import cycle
+
+random.seed()
 
 PARTICLE_SURFACES = 'particle_surfaces'
 PARTICLE_RECTS = 'particle_rects'
@@ -77,7 +80,6 @@ class Fireworks(Effect):
     def __init__(self, screen: pygame.Surface) -> None:
         super().__init__(screen)
         self.firework_colors = [BLACK_COLOR, MAIN_OKRA_COLOR, MAIN_PURPLE_COLOR]
-        self.flash_colors = [MAIN_OKRA_COLOR, MAIN_PURPLE_COLOR, RED_COLOR, GREEN_COLOR, BLUE_COLOR]
         self.flash_start_alpha = 25
         self.max_speed = 9
         self.min_speed = 6
@@ -89,9 +91,11 @@ class Fireworks(Effect):
         self.next_launch = 0
         self.last_launch = 0
         self.flash_lifetime = 200
-        self.flash_list: List[tuple[pygame.Surface, int]] = [] # flash surface and flash start tick
-        self.explosion_lifetime = 1000
-        self.explosion_list: List[Explosion] = []
+        self.flash_list: List[tuple[pygame.Surface, int, int]] = [] # flash surface and flash start tick
+        self.flash_update_interval = 1000 / 60
+        self.explosion_lifetime = 1500
+        self.explosion_object: Explosion = Explosion(self.screen, self.explosion_lifetime)
+        self.explosion_object.init_particles()
 
     def new_instance(self):
         x_padding = 50
@@ -99,12 +103,12 @@ class Fireworks(Effect):
         random_x = random.randrange(x_padding, screen_x - x_padding)
         lifetime = random.randrange(self.min_lifetime, self.max_lifetime)
         speed = random.randrange(self.min_speed * 10, self.max_speed * 10) / 10
-        new_firework = FireworkInstance(lifetime, (random_x, screen_y + 5), random.choice(self.firework_colors), speed)
+        new_firework = FireworkInstance(self.screen, lifetime, (random_x, screen_y + 5), (random.choice(self.firework_colors)), speed)
         self.instances.append(new_firework)
 
     def update(self):
         ticks = pygame.time.get_ticks()
-        if ticks - self.last_launch >= self.next_launch and len(self.instances) < self.max_effects:
+        if len(self.instances) < self.max_effects and ticks - self.last_launch >= self.next_launch:
             self.new_instance()
             self.next_launch = ticks + random.randrange(self.min_launch_delay, self.max_launch_delay)
         for instance in self.instances:
@@ -112,39 +116,47 @@ class Fireworks(Effect):
 
         for instance in self.instances:
             if instance.is_expired():
-                self.firework_explosion(random.choice(self.flash_colors), instance.rect)
+                self.firework_explosion(self.randomized_dark_color(), instance.rect)
         
         self.instances = [instance for instance in self.instances if not instance.is_expired()]
 
-        for explosion in self.explosion_list:
-            explosion.update()
+        self.explosion_object.update()
+
+
+    def randomized_dark_color(self):
+        high_range = (150, 255)
+        full_range = (0, 255)
+        low_range = (0, 100)
+        red_range, green_range, blue_range = random.sample([high_range, full_range, low_range], 3)
+        return (random.randint(*red_range), random.randint(*green_range), random.randint(*blue_range))
+
     
     def firework_explosion(self, color, center):
         flash_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
         flash_surface.fill(color)
-        self.flash_list.append((flash_surface, pygame.time.get_ticks()))
-        new_explosion = Explosion(self.explosion_lifetime, center, color)
-        self.explosion_list.append(new_explosion)
+        self.flash_list.append({'surface': flash_surface, 'start_tick': pygame.time.get_ticks(), 'last_update': 0})
+        self.explosion_object.new_explosion(center, color)
         
     def draw(self, screen):
         for instance in self.instances:
             instance.draw(screen)
         ticks = pygame.time.get_ticks()
-        self.flash_list = [flash for flash in self.flash_list if not ticks - flash[1] >= self.flash_lifetime]
+        self.flash_list = [flash for flash in self.flash_list if not ticks - flash['start_tick'] >= self.flash_lifetime]
         for flash in self.flash_list:
-            flash_surface = flash[0]
-            elapsed_time = ticks - flash[1]
-            alpha = self.flash_start_alpha - self.flash_start_alpha * (elapsed_time / self.flash_lifetime)
-            flash_surface.set_alpha(alpha)
-            self.screen.blit(flash_surface, flash_surface.get_rect())
+            flash_surface = flash['surface']
+            elapsed_time = ticks - flash['start_tick']
+            if ticks - flash['last_update'] >= self.flash_update_interval:
+                alpha = self.flash_start_alpha - self.flash_start_alpha * (elapsed_time / self.flash_lifetime)
+                flash_surface.set_alpha(alpha)
+                self.screen.blit(flash_surface, flash_surface.get_rect())
+                flash['last_update'] = ticks
 
-        self.explosion_list = [explosion for explosion in self.explosion_list if not explosion.is_expired()]
-        for explosion in self.explosion_list:
-            explosion.draw(screen)
+        self.explosion_object.draw(screen)
 
 
 class EffectInstance:
-    def __init__(self, lifetime, position) -> None:
+    def __init__(self, screen: pygame.Surface, lifetime, position) -> None:
+        self.screen = screen
         self.lifetime = lifetime
         self.position = position
         self.color = None
@@ -164,52 +176,90 @@ class EffectInstance:
             screen.blit(self.surface, self.rect)
 
 
-class Explosion(EffectInstance):
-    def __init__(self, lifetime, position, color) -> None:
-        super().__init__(lifetime, position)
-        self.particle_list = []
-        self.max_particles = 15
-        self.min_particles = 10
-        self.max_speed = 6
-        self.min_speed = 4
-        self.particle_amount = random.randrange(self.min_particles, self.max_particles + 1)
-        angle_increment = 360 / self.particle_amount
-        for i in range(self.particle_amount):
-            random_angle_shift = random.randrange(0, angle_increment // 2)
-            angle = (i * angle_increment + random_angle_shift) % 360
-            angle_radians = math.radians(angle)
-            direction = (math.cos(angle_radians), math.sin(angle_radians))
-            new_particle = self.create_particle(position, color, direction)
-            self.particle_list.append(new_particle)
+class Explosion:
+    particle_list: List[Dict] = []
+    particle_cycle = cycle(particle_list)
+
+    def __init__(self, screen, lifetime) -> None:
+        self.screen = screen
+        self.lifetime = lifetime
+        self.color = None
+        self.start_age = pygame.time.get_ticks()
+        self.surface: pygame.Surface = None
+        self.rect: pygame.Rect = None
+
+        self.particle_amount = 30
+        self.max_speed = 15
+        self.min_speed = 1
+        self.particle_size = 6
+        self.particle_update_list = []
+
+    def set_particle_color(self, surface: pygame.Surface, color):
+        width, height = surface.get_size()
+        red, green, blue = color
+        for x in range(width):
+            for y in range(height):
+                alpha = surface.get_at((x, y ))[3]
+                surface.set_at((x, y), pygame.Color(red, green, blue, alpha))
+
+    def new_explosion(self, position, color):
+        for _ in range(self.particle_amount):
+            new_particle = next(self.particle_cycle)
+            new_particle['surface'].set_alpha(255)
+            self.set_particle_color(new_particle['surface'], color)
+            speed = random.randrange(self.min_speed * 10, self.max_speed * 10) / 10
+            new_particle['position']['x'], new_particle['position']['y'] = position
+            new_particle['velocity']['x'] = speed * new_particle['direction']['x']
+            new_particle['velocity']['y'] = speed * new_particle['direction']['y']
+            new_particle['lifetime'] = self.lifetime
+            new_particle['start_tick'] = pygame.time.get_ticks()
+            new_particle['color'] = color
+            self.particle_update_list.append(new_particle)
         
-    def create_particle(self, position, color, direction):
-        surface_size = 3
-        firework_size = 1
+    def init_particles(self):
+        if not self.particle_list:
+            particles_to_prerender = 150
+            angle_increment = 360 / self.particle_amount
+            for i in range(particles_to_prerender):
+                random_angle_shift = random.randrange(0, angle_increment // 2)
+                angle = (i * angle_increment + random_angle_shift) % 360
+                angle_radians = math.radians(angle)
+                direction = (math.cos(angle_radians), math.sin(angle_radians))
+                new_particle = self.create_particle(direction)
+                self.particle_list.append(new_particle)
+
+            self.particle_cycle = cycle(self.particle_list)
+        
+    def create_particle(self, direction):
+        color = (0, 0, 0)
+        position = (-50, -50)
+        surface_size = self.particle_size * 2
         firework_surface = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
-        pygame.draw.circle(firework_surface, color, (firework_size, firework_size), firework_size)
-        speed = random.randrange(self.min_speed * 10, self.max_speed * 10) / 10
-        return {"surface": firework_surface, "velocity": {'x': direction[0] * speed, 'y': direction[1] * speed}, "position": {'x': position[0], 'y': position[1]}}
+        pygame.draw.circle(firework_surface, color, (self.particle_size, self.particle_size), self.particle_size)
+        return {"surface": firework_surface, "direction": {'x': direction[0], 'y': direction[1]}, "velocity": {'x': 0, 'y': 0}, "position": {'x': position[0], 'y': position[1], "lifetime": 0, "color": (0, 0, 0)}}
 
     def update(self):
         air_drag = 0.98
         gravity = 0.1
         ticks = pygame.time.get_ticks()
-        for particle in self.particle_list:
-            elapsed_time = (ticks - self.start_age) / 1000
-            particle["velocity"]['y'] += gravity * elapsed_time**2
+        for particle in self.particle_update_list:
+            elapsed_time = (ticks - particle["start_tick"])
+            particle["velocity"]['y'] += gravity * (elapsed_time / 1000)**2
             particle["velocity"]['x'] *= air_drag
             particle["velocity"]['y'] *= air_drag
             particle["position"]['x'] += particle["velocity"]['x']
             particle["position"]['y'] += particle["velocity"]['y']
+            if elapsed_time >= particle["lifetime"]:
+                self.particle_update_list.remove(particle)
 
     def draw(self, screen: pygame.Surface):
-        for particle in self.particle_list:
+        for particle in self.particle_update_list:
             screen.blit(particle['surface'], (int(particle["position"]['x']), int(particle["position"]['y'])))
             
 
 class FireworkInstance(EffectInstance):
-    def __init__(self, lifetime, position, color, speed) -> None:
-        super().__init__(lifetime, position)
+    def __init__(self, screen, lifetime, position, color, speed) -> None:
+        super().__init__(screen, lifetime, position)
         self.speed = speed
         self.color = color
         self.x_variation = random.randrange(-1, 1) * 0.3

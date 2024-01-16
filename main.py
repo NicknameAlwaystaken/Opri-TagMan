@@ -4,6 +4,7 @@ import asyncio
 import string
 from typing import List, Dict, Type
 import random
+random.seed()
 import os
 from effects import Fireworks, EffectController
 
@@ -706,13 +707,13 @@ if __name__ == "__main__":
     
     screen_size_x, screen_size_y = (1024, 768)
 
-    screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
+    screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.DOUBLEBUF | pygame.SCALED)
 
     # display_info = pygame.display.Info()
     # if screen_size_x <= display_info.current_w and screen_size_y <= display_info.current_h:
-    #     screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.RESIZABLE)
+    #     screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.DOUBLEBUF)
     # else:
-    #     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.RESIZABLE)
+    #     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.DOUBLEBUF)
 
 
     TICK_SPEED = 60
