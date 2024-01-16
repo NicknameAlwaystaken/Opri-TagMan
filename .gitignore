@@ -160,3 +160,4 @@ cython_debug/
 #.idea/
 Build with pygbag.bat
 Debug Local.bat
+Launch Local.bat

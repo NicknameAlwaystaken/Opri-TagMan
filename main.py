@@ -468,18 +468,21 @@ class AnswerObject(TextObject):
         guessed_letters = self.guessed_letters
         letter_button = game.get_letter_button(letter)
 
+        print(f"{correct_answer = }")
+
         if letter not in correct_answer:
             game.heart_object.remove_health(1)
             letter_button.change_button_state(BUTTON_PRESSED_INCORRECT)
             self.wrong_letter_animation()
+            wrong_letter_sound.play()
             if game.heart_object.get_health() <= 0:
                 game.game_lost()
             return
         
         self.correct_letter_animation()
+        correct_letter_sound.play()
         letter_button.change_button_state(BUTTON_PRESSED_CORRECT)
     
-        print(f"{correct_answer = }")
         for letter in correct_answer:
             if letter not in guessed_letters and letter in string.ascii_uppercase:
                 guessed_string += '_'
@@ -713,11 +716,15 @@ async def main():
 
 if __name__ == "__main__":
     pygame.init()
+    pygame.mixer.init(buffer=1024)
     
     screen_size_x, screen_size_y = (1024, 768)
 
     screen = pygame.display.set_mode((screen_size_x, screen_size_y), pygame.DOUBLEBUF | pygame.SCALED)
 
+    game_name = 'TagMan'
+
+    pygame.display.set_caption(f"Play {game_name}")
 
     IMAGE_FOLDER = 'images'
     icon_image = pygame.image.load("favicon.png").convert_alpha()
@@ -729,6 +736,11 @@ if __name__ == "__main__":
     # else:
     #     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.DOUBLEBUF)
 
+    # Game sounds
+    SOUND_FOLDER = 'sounds'
+
+    correct_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "correct_letter_sound.ogg"))
+    wrong_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "wrong_letter_sound.ogg"))
 
     TICK_SPEED = 60
 
@@ -838,7 +850,6 @@ if __name__ == "__main__":
 
     try_again_button_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "try_again_button_unpressed.png")).convert_alpha()
     try_again_button_size = try_again_button_unpressed.get_size()
-    print(f"{try_again_button_size = }")
     try_again_button_scale = 1 / (135 / try_again_button_size[1])
     try_again_button_unpressed_scaled = pygame.transform.smoothscale(try_again_button_unpressed, (int(try_again_button_size[0] / try_again_button_scale), int(try_again_button_size[1] / try_again_button_scale)))
     
@@ -952,7 +963,5 @@ if __name__ == "__main__":
 
     score_menu_effects = EffectController()
     score_menu_effects.add_effect(Fireworks(screen))
-
-    #print(pygame.font.get_fonts())
 
     asyncio.run(main())
