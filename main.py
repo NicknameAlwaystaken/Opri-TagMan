@@ -9,9 +9,7 @@ import os
 from effects import Fireworks, EffectController
 import webbrowser
 import time
-import re
 from itertools import cycle
-
 from pygame.font import Font
 
 class Game:
@@ -425,7 +423,7 @@ class HeartObject(ImageObject):
         self.surface = self.heart_surface
 
 class TextObject(NonInteractiveObject):
-    def __init__(self, id, font: pygame.font.Font, color = None) -> None:
+    def __init__(self, id, font: Font, color = None) -> None:
         super().__init__(id)
         self.text = ''
         self.font = font
@@ -458,7 +456,7 @@ class TextObject(NonInteractiveObject):
             screen.blit(self.surface, self.rect)
 
 class AnswerObject(TextObject):
-    def __init__(self, id, font: pygame.font.Font, color) -> None:
+    def __init__(self, id, font: Font, color) -> None:
         super().__init__(id, font, color)
         self.guessed_letters = []
         self.draw_text = ''
@@ -525,9 +523,9 @@ class AnswerObject(TextObject):
             if elapsed_time >= self.animation_start_delay:
                 if self.previous_letter_guessed == letter and self.animation_state == CORRECT_LETTER_ANIMATION:
                     if animation_fraction <= 0.5:
-                        scaled_image = pygame.transform.rotozoom(self.letter_dict[str(index)]['surface'], 0, 1 + self.correct_letter_animation_scale * animation_fraction)
+                        scaled_image = pygame.transform.smoothscale_by(self.letter_dict[str(index)]['surface'], 1 + self.correct_letter_animation_scale * animation_fraction)
                     else:
-                        scaled_image = pygame.transform.rotozoom(self.letter_dict[str(index)]['surface'], 0, 1 + self.correct_letter_animation_scale - self.correct_letter_animation_scale * animation_fraction)
+                        scaled_image = pygame.transform.smoothscale_by(self.letter_dict[str(index)]['surface'], 1 + self.correct_letter_animation_scale - self.correct_letter_animation_scale * animation_fraction)
             
             finished_image = scaled_image if scaled_image else self.letter_dict[str(index)]['surface']
             finished_image_rect = finished_image.get_rect()
@@ -680,7 +678,7 @@ class VolumeButton(ButtonObject):
             play_sound(self.button_sound)
 
 class LetterButton(ButtonObject):
-    def __init__(self, id, letter, font: pygame.font.Font) -> None:
+    def __init__(self, id, letter, font: Font) -> None:
         super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
         self.image_list = {
@@ -777,6 +775,7 @@ def stop_sounds():
 
 def change_volume(volume):
     [pygame.mixer.Sound.set_volume(sound, volume) for sound in sound_list]
+    #pygame.mixer.music.set_volume(volume / 4)
 
 def menu_action(event, game_state):
     event_key = event.key
@@ -816,9 +815,13 @@ async def main():
 
             if event.type == pygame.QUIT:
                 running = 0
+                
+            #if not pygame.mixer.music.get_busy() and (event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN):
+                #pygame.mixer.music.play()
 
-            elif game.input_frozen: # inputs frozen during transition
+            if game.input_frozen: # inputs frozen during transition
                 continue
+
 
             elif event.type == pygame.KEYDOWN:
                 if not menu_action(event, game.current_menu):
@@ -865,7 +868,7 @@ async def main():
         loop_count += 1
         #print(f"Average Loop Time: {total_time / loop_count}, Loop Time: {loop_time:.6f}, Event Time: {event_time:.6f}, Game Draw Time: {game_draw_time:.6f}, Game Update Time: {game_update_time:.6f}")
 
-        await asyncio.sleep(0.0000001)
+        await asyncio.sleep(0.001)
 
 if __name__ == "__main__":
     buffer = 2**12 # 2**12 = 4096'
@@ -894,6 +897,10 @@ if __name__ == "__main__":
 
     # Game sounds
     SOUND_FOLDER = 'sounds'
+
+    #pygame.mixer.music.load(os.path.join(SOUND_FOLDER, "background_music.wav"))
+
+    #background_music_delay = 120 * 1000 # two minute delay before a new song starts
 
     correct_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "correct_letter_sound.wav"))
     wrong_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "wrong_letter_sound.wav"))
@@ -958,24 +965,24 @@ if __name__ == "__main__":
     ARIAL_BLACK = os.path.join(FONT_FOLDER, 'ariblk.ttf')
     CONSOLAS_BOLD = os.path.join(FONT_FOLDER, 'consolab.ttf')
 
-    DEFAULT_FONT = pygame.font.Font(FONT_FILE, DEFAULT_FONT_SIZE)
-    LETTER_BUTTON_FONT = pygame.font.Font(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
-    ANSWER_FONT = pygame.font.Font(CONSOLAS_BOLD, ANSWER_FONT_SIZE)
+    DEFAULT_FONT = Font(FONT_FILE, DEFAULT_FONT_SIZE)
+    LETTER_BUTTON_FONT = Font(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
+    ANSWER_FONT = Font(CONSOLAS_BOLD, ANSWER_FONT_SIZE)
     ANSWER_FONT.set_bold(True)
-    SCORE_FONT = pygame.font.Font(ARIAL_BLACK, SCORE_FONT_SIZE)
+    SCORE_FONT = Font(ARIAL_BLACK, SCORE_FONT_SIZE)
 
     game_logo_no_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_logo_no_text.png")).convert_alpha()
     scale_amount = (screen_size_x / 1.6) / game_logo_no_text.get_size()[0]
-    game_logo_no_text_scaled = pygame.transform.rotozoom(game_logo_no_text, 0, scale_amount)
+    game_logo_no_text_scaled = pygame.transform.smoothscale_by(game_logo_no_text, scale_amount)
 
     game_logo = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_logo.png")).convert_alpha()
-    main_menu_logo_scaled = pygame.transform.rotozoom(game_logo, 0, 0.5)
+    main_menu_logo_scaled = pygame.transform.smoothscale_by(game_logo, 0.5)
 
     oprimagazine_logo_smallest = pygame.image.load(os.path.join(IMAGE_FOLDER, "logo_y_100.png")).convert_alpha()
     logo_y_size = oprimagazine_logo_smallest.get_size()[1]
     game_menu_y_size = 100
     game_menu_scale = 1 / (logo_y_size / game_menu_y_size)
-    game_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo_smallest, 0, game_menu_scale)
+    game_menu_logo_scaled = pygame.transform.smoothscale_by(oprimagazine_logo_smallest, game_menu_scale)
     
     game_over_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_over_text.png")).convert_alpha()
     game_over_text_scaled = pygame.transform.smoothscale(game_over_text, game_over_text.get_size())
@@ -1158,6 +1165,7 @@ if __name__ == "__main__":
     game.add_object(SCORE_MENU, try_again_button)
     game.add_object(SCORE_MENU, game_over_object)
     game.add_object(SCORE_MENU, you_win_object)
+    game.add_object(SCORE_MENU, back_button)
     game.add_object(SCORE_MENU, volume_button)
 
     game.reposition_objects((screen_size_x, screen_size_y))
