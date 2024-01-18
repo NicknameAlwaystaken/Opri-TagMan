@@ -8,41 +8,60 @@ random.seed()
 import os
 from effects import Fireworks, EffectController
 import webbrowser
+import time
+import re
+from itertools import cycle
 
 from pygame.font import Font
 
 class Game:
-    def __init__(self, answer_object: AnswerObject, heart_object: HeartObject, score_object: Score) -> None:
-        self.answer = answer_object
+    def __init__(self, screen: pygame.Surface, answer_object: AnswerObject, heart_object: HeartObject, score_object: ScoreObject) -> None:
+        self.screen = screen
+        self.answer_object = answer_object
         self.heart_object = heart_object
         self.score_object = score_object
         self.input_frozen = False
+        self.default_freeze_time = 400
         self.freeze_time = 400 # milliseconds
         self.freeze_time_start = 0
         self.word_list = []
         self.game_ended = NOT_ENDED
         self.guessed_letters = []
-        self.current_menu = MAIN_MENU
+        self.current_menu = START_MENU
         self.letter_buttons: List[LetterButton] = []
-        self.menu_object_list: Dict[str, Dict[str, List[Type[LetterButton]]]] = {
-            PLAY_MENU: {},
-            MAIN_MENU: {},
-            SCORE_MENU: {}
-            }
+        self.start_menu_objects: Dict[str, List[Type[GameObject]]] = {} # Dic, {object_type, [list of objects]}
+        self.play_menu_objects: Dict[str, List[Type[GameObject]]] = {}
+        self.score_menu_objects: Dict[str, List[Type[GameObject]]] = {}
+        self.volume = cycle([1.00, 0.66, 0.33, 0.00])
+        self.cycle_volume()
+        
         self.transition_screen = None
         self.menu_transitioning_state = NO_TRANSITION
         self.transitioning_to = None
-        self.transition_in_time = 250 # milliseconds
-        self.transition_out_time = 250 # milliseconds
+        self.transition_in_time = 200 # milliseconds
+        self.transition_out_time = 200 # milliseconds
         self.transition_in_start_time = 0 # milliseconds
         self.transition_out_start_time = 0 # milliseconds
+        self.transition_screen = pygame.Surface(screen.get_size())
+
+        self.scorescreen_delay_time = 1000
+        self.scorescreen_delay_start_time = 0
 
         self.add_object(PLAY_MENU, answer_object)
         self.add_object(PLAY_MENU, heart_object)
         self.add_object(SCORE_MENU, score_object)
 
+        list_of_words = read_wordlist(wordlist_file)
+        self.set_word_selection(list_of_words)
+
         self.create_letter_buttons()
         self.score_object.set_score(0)
+        self.heart_object.set_max_health(8)
+        self.answer_object.set_answer(random.choice(self.word_list))
+
+    def cycle_volume(self):
+        change_volume(next(self.volume))
+        #print(pygame.mixer.Sound.get_volume(correct_letter_sound))
 
     def reposition_objects(self, screen_size):
         self.reposition_menu_objects(screen_size)
@@ -56,43 +75,48 @@ class Game:
             answer_pos = 0.35
         else: # portrait
             answer_pos = 0.25
-        self.answer.center = screen_size_x // 2, screen_size_y * answer_pos
+        self.answer_object.update_rect_center((screen_size_x // 2, screen_size_y * answer_pos))
 
     def reposition_menu_objects(self, screen_size):
         screen_size_x, screen_size_y = screen_size
-        top_margin = 100
-        for menu in self.menu_object_list.values():
-            for object_list in menu.values():
-                for object in object_list:
-                    # SCORE_MENU
-                    if object.id == NEXT_BUTTON_ID:
-                        object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
-                    elif object.id == TRY_AGAIN_BUTTON_ID:
-                        object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
-                    elif object.id == GAME_OVER_ID:
-                        object.center = screen_size_x // 2, screen_size_y // 3 * 1
-                    elif object.id == YOU_WIN_ID:
-                        object.center = screen_size_x // 2, screen_size_y // 3 * 1
-                    elif object.id == SCORE_ID:
-                        object.center = screen_size_x // 2, screen_size_y // 2
-                    # START_MENU
-                    elif object.id == START_BUTTON_ID:
-                        object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
-                    elif object.id == LOGO_MAIN_ID:
-                        object.center = screen_size_x // 2, screen_size_y // 3 * 1
-                    # GAME_MENU
-                    elif object.id == BACK_BUTTON_ID:
-                        game_logo_surface = logo_game_button.surface
-                        game_logo_rect = game_logo_surface.get_rect()
-                        object.rect.midright = screen_size_x - 10, game_logo_rect.center[1] - 10
-                    elif object.id == LOGO_GAME_ID:
-                        object.topleft = 0, 0
-                    elif object.id == LOGO_BACKGROUND_ID:
-                        object.center = screen_size_x // 2, screen_size_y // 2
-                    elif object.id == HEART_ID:
-                        game_logo_surface = logo_game_button.surface
-                        game_logo_rect = game_logo_surface.get_rect()
-                        object.center = game_logo_rect.center[0], game_logo_surface.get_size()[1] + object.surface.get_size()[1] / 2
+        for object_list in self.score_menu_objects.values(): # SCORE_MENU
+            for object in object_list:
+                if object.id == NEXT_BUTTON_ID:
+                    object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
+                elif object.id == TRY_AGAIN_BUTTON_ID:
+                    object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
+                elif object.id == GAME_OVER_ID:
+                    object.update_rect_center((screen_size_x // 2, screen_size_y // 3 * 1))
+                elif object.id == YOU_WIN_ID:
+                    object.update_rect_center((screen_size_x // 2, screen_size_y // 3 * 1))
+                elif object.id == SCORE_ID:
+                    object.update_rect_center((screen_size_x // 2, screen_size_y // 2))
+
+        for object_list in self.start_menu_objects.values(): # START_MENU
+            for object in object_list:
+                if object.id == START_BUTTON_ID:
+                    object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
+                elif object.id == LOGO_MAIN_ID:
+                    object.update_rect_center((screen_size_x // 2, screen_size_y // 3 * 1))
+
+        for object_list in self.play_menu_objects.values(): # PLAY_MENU
+            for object in object_list:
+                if object.id == BACK_BUTTON_ID:
+                    game_logo_surface = logo_game_button.surface
+                    game_logo_rect = game_logo_surface.get_rect()
+                    object.rect.midright = screen_size_x - 10, game_logo_rect.center[1] - 10
+                elif object.id == VOLUME_BUTTON_ID:
+                    game_logo_surface = logo_game_button.surface
+                    game_logo_rect = game_logo_surface.get_rect()
+                    object.rect.midright = screen_size_x - 20 - back_button_pressed_scaled.get_size()[0], game_logo_rect.center[1] - 10
+                elif object.id == LOGO_GAME_ID:
+                    object.update_rect_topleft((0, 0))
+                elif object.id == LOGO_BACKGROUND_ID:
+                    object.update_rect_center((screen_size_x // 2, screen_size_y // 2))
+                elif object.id == HEART_ID:
+                    game_logo_surface = logo_game_button.surface
+                    game_logo_rect = game_logo_surface.get_rect()
+                    object.update_rect_center((game_logo_rect.center[0], game_logo_surface.get_size()[1] + object.surface.get_size()[1] / 2))
         
     def create_letter_buttons(self):
         for letter in string.ascii_uppercase:
@@ -104,10 +128,20 @@ class Game:
         self.word_list = word_list
 
     def get_objects(self, object_type = None):
+        if self.current_menu == PLAY_MENU:
+            menu_dict = self.play_menu_objects
+        elif self.current_menu == START_MENU:
+            menu_dict = self.start_menu_objects
+        elif self.current_menu == SCORE_MENU:
+            menu_dict = self.score_menu_objects
+        else:
+            return None
+
         if object_type is None:
-            return [object for values in self.menu_object_list[self.current_menu].values() for object in values]
-        if object_type in self.menu_object_list[self.current_menu]:
-            return [object for object in self.menu_object_list[self.current_menu][object_type]]
+            return [object for values in menu_dict.values() for object in values]
+        
+        if object_type in menu_dict:
+            return [object for object in menu_dict[object_type]]
         return None
 
     def go_to_menu(self, menu):
@@ -123,29 +157,42 @@ class Game:
         self.transition_out_start_time = pygame.time.get_ticks()
         self.menu_transitioning_state = TRANSITION_OUT
         self.current_menu = self.transitioning_to
+        self.unfreeze_input()
         if self.current_menu == PLAY_MENU:
             self.start_new_game()
 
     def transition_out_finish(self):
         self.menu_transitioning_state = NO_TRANSITION
-        self.input_frozen = False
+        if self.game_ended == GAME_WON and self.current_menu == SCORE_MENU:
+            score_menu_effects.activate_effects()
+            
+    def score_screen_delay_finish(self):
+        self.go_to_menu(SCORE_MENU)
+        self.freeze_input()
 
     def start_menu_transition(self):
-        self.transition_screen = pygame.Surface(screen.get_size())
         self.transition_screen.fill(TRANSITION_SCREEN_COLOR)
         self.transition_in_start_time = pygame.time.get_ticks()
         game.input_frozen = True
 
     def start_new_game(self):
         self.game_ended = NOT_ENDED
-        self.answer.set_answer(random.choice(self.word_list))
+        self.answer_object.set_answer(random.choice(self.word_list))
         self.heart_object.set_max_health(8)
         for object in self.letter_buttons:
             object.change_button_state(BUTTON_UNPRESSED)
 
     def draw(self, screen: pygame.Surface):
-        if self.current_menu in self.menu_object_list:
-            for object_list in self.menu_object_list[self.current_menu].values():
+        menu_dict = {}
+        if self.current_menu == PLAY_MENU:
+            menu_dict = self.play_menu_objects
+        elif self.current_menu == START_MENU:
+            menu_dict = self.start_menu_objects
+        elif self.current_menu == SCORE_MENU:
+            menu_dict = self.score_menu_objects
+        
+        if menu_dict:
+            for object_list in menu_dict.values():
                 for object in object_list:
                     object.draw(screen)
 
@@ -160,6 +207,7 @@ class Game:
 
     def update(self):
         ticks = pygame.time.get_ticks()
+        
         if self.menu_transitioning_state != NO_TRANSITION:
 
             if self.menu_transitioning_state == TRANSITION_IN:
@@ -172,15 +220,29 @@ class Game:
                 if elapsed_time >= self.transition_in_time:
                     self.transition_out_finish()
 
-        if self.current_menu in self.menu_object_list:
-            for object_list in self.menu_object_list[self.current_menu].values():
+            elif self.menu_transitioning_state == SCORE_SCREEN_DELAY:
+                elapsed_time = ticks - self.scorescreen_delay_start_time
+                if elapsed_time >= self.scorescreen_delay_time:
+                    self.score_screen_delay_finish()
+
+        menu_dict = {}
+        if self.current_menu == PLAY_MENU:
+            menu_dict = self.play_menu_objects
+        elif self.current_menu == START_MENU:
+            menu_dict = self.start_menu_objects
+        elif self.current_menu == SCORE_MENU:
+            menu_dict = self.score_menu_objects
+        
+        #print(f"{self.current_menu = } {menu_dict = } {self.start_menu_objects = }")
+        if menu_dict:
+            for object_list in menu_dict.values():
                 for object in object_list:
                     object.update()
 
         if self.input_frozen:
             elapsed_time = ticks - self.freeze_time_start
             if elapsed_time >= self.freeze_time:
-                self.input_frozen = False
+                self.unfreeze_input()
             
     def get_letter_button(self, letter: str):
         letter = letter.upper()
@@ -218,25 +280,43 @@ class Game:
                     letter_column = next_pos
 
     def add_object(self, game_state, object: GameObject):
-        if object.object_type not in self.menu_object_list[game_state]:
-            self.menu_object_list[game_state][object.object_type] = []
-        self.menu_object_list[game_state][object.object_type].append(object)
+        menu_dict = {}
+        if game_state == PLAY_MENU:
+            menu_dict = self.play_menu_objects
+        elif game_state == START_MENU:
+            menu_dict = self.start_menu_objects
+        elif game_state == SCORE_MENU:
+            menu_dict = self.score_menu_objects
+        
+        if object.object_type not in menu_dict:
+            menu_dict[object.object_type] = []
+            
+        menu_dict[object.object_type].append(object)
 
-    def freeze_input(self):
+    def unfreeze_input(self):
+        self.input_frozen = False
+        self.freeze_time = self.default_freeze_time
+
+    def freeze_input(self, delay=None):
         self.input_frozen = True
         self.freeze_time_start = pygame.time.get_ticks()
+        if delay:
+            self.freeze_time = delay
 
     def game_won(self):
         self.score_object.add_score(1)
         self.game_ended = GAME_WON
-        self.freeze_input()
-        self.go_to_menu(SCORE_MENU)
-        score_menu_effects.activate_effects()
+        play_sound(round_win_sound)
+        self.freeze_input(self.scorescreen_delay_time + 250)
+        self.scorescreen_delay_start_time = pygame.time.get_ticks()
+        self.menu_transitioning_state = SCORE_SCREEN_DELAY
 
     def game_lost(self):
         self.game_ended = GAME_LOST
-        self.freeze_input()
-        self.go_to_menu(SCORE_MENU)
+        play_sound(round_lose_sound)
+        self.freeze_input(self.scorescreen_delay_time + 250)
+        self.scorescreen_delay_start_time = pygame.time.get_ticks()
+        self.menu_transitioning_state = SCORE_SCREEN_DELAY
 
 class GameObject:
     def __init__(self, id: str) -> None:
@@ -248,6 +328,14 @@ class GameObject:
     def draw(self, screen: pygame.Surface):
         if self.surface is not None and self.rect is not None:
             screen.blit(self.surface, self.rect)
+
+    def update_rect_center(self, center):
+        self.rect = self.surface.get_rect()
+        self.rect.center = center
+
+    def update_rect_topleft(self, topleft):
+        self.rect = self.surface.get_rect()
+        self.rect.topleft = topleft
 
     def set_rect(self, rect: pygame.Rect):
         self.rect = rect
@@ -275,14 +363,8 @@ class ImageObject(NonInteractiveObject):
             return
         if self.id == GAME_OVER_ID and game.game_ended != GAME_LOST:
             return
-        if self.surface is not None and self.center is not None:
-            surface_rect = self.surface.get_rect()
-            surface_rect.center = self.center
-            screen.blit(self.surface, surface_rect)
-        elif self.surface is not None and self.topleft is not None:
-            surface_rect = self.surface.get_rect()
-            surface_rect.topleft = self.topleft
-            screen.blit(self.surface, surface_rect)
+        if self.surface is not None and self.rect is not None:
+            screen.blit(self.surface, self.rect)
 
 class HeartObject(ImageObject):
     def __init__(self, id, heart_full: pygame.Surface, heart_half: pygame.Surface, heart_empty: pygame.Surface) -> None:
@@ -291,14 +373,15 @@ class HeartObject(ImageObject):
             HEART_FULL: heart_full.copy(),
             HEART_HALF: heart_half.copy(),
             HEART_EMPTY: heart_empty.copy()
-            }
+        }
+        self.number_of_hearts = 0
+        self.previous_hearts = 0
         self.heart_surface = None
         self.health = 0
 
     def set_max_health(self, max_health):
         self.number_of_hearts = int((max_health / 2) + 0.5)
         self.health = max_health
-
         self._update_heart_surface()
 
     def remove_health(self, number):
@@ -311,7 +394,10 @@ class HeartObject(ImageObject):
     def _update_heart_surface(self):
         heart_x_spacing = 5
         heart_x_size, heart_y_size = self.image_list[HEART_FULL].get_size()
-        self.heart_surface = pygame.Surface(((heart_x_size + heart_x_spacing) * self.number_of_hearts, heart_y_size), pygame.SRCALPHA)
+
+        if not self.heart_surface or self.previous_hearts != self.number_of_hearts:
+            self.heart_surface = pygame.Surface(((heart_x_size + heart_x_spacing) * self.number_of_hearts, heart_y_size), pygame.SRCALPHA)
+
         health = self.health
         heart_index = 0
         heart_type = HEART_EMPTY
@@ -333,6 +419,9 @@ class HeartObject(ImageObject):
             self.heart_surface.blit(heart_image, heart_image_rect)
             heart_index += 1
 
+        temp_rect = self.heart_surface.get_rect()
+        temp_rect.center = self.rect.center if self.rect else (0, 0)
+        self.rect = temp_rect
         self.surface = self.heart_surface
 
 class TextObject(NonInteractiveObject):
@@ -342,17 +431,11 @@ class TextObject(NonInteractiveObject):
         self.font = font
         self.color = color
         self.temp_color = None
-        self.center = None
-        self.topleft = None
-        self.bottomleft = None
         self.alpha = None
 
     def set_text(self, text, color = None):
         self.text = text
         self.temp_color = color
-
-        self.surface = self.font.render(text, True, self.color)
-        self.rect = self.surface.get_rect()
         self._update_surface()
         
     def change_color(self, color, alpha = None):
@@ -364,22 +447,15 @@ class TextObject(NonInteractiveObject):
     def _update_surface(self):
         color = self.temp_color if self.temp_color is not None else self.color
         self.surface = self.font.render(self.text, True, color)
-        if self.alpha is not None:
+        temp_rect = self.surface.get_rect()
+        temp_rect.center = self.rect.center if self.rect else (0, 0)
+        self.rect = temp_rect
+        if self.alpha is not None and self.alpha != self.surface.get_alpha():
             self.surface.set_alpha(self.alpha)
 
     def draw(self, screen):
-        if self.surface is not None and self.center is not None:
-            surface_rect = self.surface.get_rect()
-            surface_rect.center = self.center
-            screen.blit(self.surface, surface_rect)
-        elif self.surface is not None and self.topleft is not None:
-            surface_rect = self.surface.get_rect()
-            surface_rect.topleft = self.topleft
-            screen.blit(self.surface, surface_rect)
-        elif self.surface is not None and self.bottomleft is not None:
-            surface_rect = self.surface.get_rect()
-            surface_rect.bottomleft = self.bottomleft
-            screen.blit(self.surface, surface_rect)
+        if self.surface is not None and self.rect is not None:
+            screen.blit(self.surface, self.rect)
 
 class AnswerObject(TextObject):
     def __init__(self, id, font: pygame.font.Font, color) -> None:
@@ -389,15 +465,21 @@ class AnswerObject(TextObject):
         self.previous_letter_guessed = ''
         self.animation_state = NO_LETTER_ANIMATION
         self.animation_start_time = 0
+        self.animation_start_delay = 0
         self.wrong_letter_animation_time = 400
         self.correct_letter_animation_time = 250
         self.correct_letter_animation_scale = 0.3
+        self.letter_dict: Dict[str, Dict[str, pygame.Surface, str, str, str, tuple[int, int, int]]] = {}
+        self.last_letter_colored = None
 
     def set_answer(self, answer: str):
         self.text = answer.upper()
         self.draw_text = ''.join(['_' if letter in string.ascii_uppercase else letter for letter in answer.upper()])
         self.temp_color = None
         self.guessed_letters = []
+        self.letter_dict = {}
+        for index, character in enumerate(self.draw_text):
+            self.letter_dict[str(index)] = {'letter': character, 'color': self.color}
         self._update_surface()
 
     def set_text(self, text, color=None):
@@ -407,53 +489,73 @@ class AnswerObject(TextObject):
         letter_size_x, letter_size_y = self.font.size('_')
         letter_x_spacing = 0
         x_margin = (letter_size_x * (1 + self.correct_letter_animation_scale)) / 2
-        letter_surface = pygame.Surface((x_margin * 2 + (letter_size_x + letter_x_spacing) * len(self.draw_text), letter_size_y * (1 + self.correct_letter_animation_scale)), pygame.SRCALPHA)
+        word_surface = pygame.Surface((x_margin * 2 + (letter_size_x + letter_x_spacing) * len(self.draw_text), letter_size_y * (1 + self.correct_letter_animation_scale)), pygame.SRCALPHA)
+        elapsed_time = 0
         if self.animation_state != NO_LETTER_ANIMATION:
             elapsed_time = pygame.time.get_ticks() - self.animation_start_time
-            if self.animation_state == CORRECT_LETTER_ANIMATION:
-                animation_fraction = min(elapsed_time / self.correct_letter_animation_time, 1)
-            else:
-                animation_fraction = min(elapsed_time / self.wrong_letter_animation_time, 1)
+            if elapsed_time >= self.animation_start_delay:
+                animation_start_time = elapsed_time - self.animation_start_delay
+                if self.animation_state == CORRECT_LETTER_ANIMATION:
+                    animation_fraction = min(animation_start_time / self.correct_letter_animation_time, 1)
+                else:
+                    animation_fraction = min(animation_start_time / self.wrong_letter_animation_time, 1)
+
+        color = self.temp_color if self.temp_color is not None else self.color
+        for letter_values in self.letter_dict.values():
+            if letter_values['letter'] != self.previous_letter_guessed and letter_values['color'] != color:
+                letter_image = self.font.render(letter_values['letter'], True, color)
+                letter_values['surface'] = letter_image
 
         for index, letter in enumerate(self.draw_text):
-            if self.animation_state == WRONG_LETTER_ANIMATION:
+            if self.animation_state == WRONG_LETTER_ANIMATION and elapsed_time >= self.animation_start_delay:
                 color = tuple([MAIN_GREY_COLOR[i] + (self.color[i] - MAIN_GREY_COLOR[i]) * animation_fraction for i in range(3)])
             else:
                 if self.previous_letter_guessed == letter:
                     color = CORRECT_COLOR
+                    self.last_letter_colored = letter
                 else:
                     color = self.temp_color if self.temp_color is not None else self.color
 
-            letter_image = self.font.render(letter, True, color)
+            if self.letter_dict[str(index)]['letter'] == '_':
+                letter_image = self.font.render(letter, True, color)
+                self.letter_dict[str(index)]['surface'] = letter_image
+                self.letter_dict[str(index)]['letter'] = letter
+                self.letter_dict[str(index)]['color'] = color
+            scaled_image = None
+            if elapsed_time >= self.animation_start_delay:
+                if self.previous_letter_guessed == letter and self.animation_state == CORRECT_LETTER_ANIMATION:
+                    if animation_fraction <= 0.5:
+                        scaled_image = pygame.transform.rotozoom(self.letter_dict[str(index)]['surface'], 0, 1 + self.correct_letter_animation_scale * animation_fraction)
+                    else:
+                        scaled_image = pygame.transform.rotozoom(self.letter_dict[str(index)]['surface'], 0, 1 + self.correct_letter_animation_scale - self.correct_letter_animation_scale * animation_fraction)
+            
+            finished_image = scaled_image if scaled_image else self.letter_dict[str(index)]['surface']
+            finished_image_rect = finished_image.get_rect()
+            finished_image_rect.center = (x_margin + letter_size_x / 2 + letter_size_x * index, word_surface.get_size()[1] / 2)
+            word_surface.blit(finished_image, finished_image_rect)
 
-            if self.previous_letter_guessed == letter and self.animation_state == CORRECT_LETTER_ANIMATION:
-                if animation_fraction <= 0.5:
-                    letter_image = pygame.transform.rotozoom(letter_image, 0, 1 + self.correct_letter_animation_scale * animation_fraction)
-                else:
-                    letter_image = pygame.transform.rotozoom(letter_image, 0, 1 + self.correct_letter_animation_scale - self.correct_letter_animation_scale * animation_fraction)
-
-            letter_rect = letter_image.get_rect()
-            letter_rect.center = (x_margin + letter_size_x / 2 + letter_size_x * index, letter_surface.get_size()[1] / 2)
-            letter_surface.blit(letter_image, letter_rect)
-
-        self.surface = letter_surface
+        temp_rect = word_surface.get_rect()
+        temp_rect.center = self.rect.center if self.rect else (0, 0)
+        self.rect = temp_rect
+        self.surface = word_surface
         
     def update(self):
         if self.animation_state != NO_LETTER_ANIMATION:
-            self._update_surface()
             elapsed_time = pygame.time.get_ticks() - self.animation_start_time
-            if (elapsed_time > self.wrong_letter_animation_time and self.animation_state == WRONG_LETTER_ANIMATION) or (
-                    elapsed_time > self.correct_letter_animation_time and self.animation_state == CORRECT_LETTER_ANIMATION):
-                self.animation_state = NO_LETTER_ANIMATION
-                self._update_surface()
+            if elapsed_time >= self.animation_start_delay:
+                if (elapsed_time > self.wrong_letter_animation_time and self.animation_state == WRONG_LETTER_ANIMATION) or (
+                        elapsed_time > self.correct_letter_animation_time and self.animation_state == CORRECT_LETTER_ANIMATION):
+                    self.animation_state = NO_LETTER_ANIMATION
+                
+            self._update_surface()
 
     def wrong_letter_animation(self):
         self.animation_state = WRONG_LETTER_ANIMATION
-        self.animation_start_time = pygame.time.get_ticks()
+        self.animation_start_time = pygame.time.get_ticks() + self.animation_start_delay
 
     def correct_letter_animation(self):
         self.animation_state = CORRECT_LETTER_ANIMATION
-        self.animation_start_time = pygame.time.get_ticks()
+        self.animation_start_time = pygame.time.get_ticks() + self.animation_start_delay
 
     def check_letter(self, letter: str): # Returns True if word is solved, False if not
         letter = letter.upper()
@@ -464,23 +566,25 @@ class AnswerObject(TextObject):
         if letter in guessed_letters:
             return
         
+        self.animation_state == NO_LETTER_ANIMATION
+        
         self.guessed_letters.append(letter)
         guessed_letters = self.guessed_letters
         letter_button = game.get_letter_button(letter)
 
-        print(f"{correct_answer = }")
+        #print(f"{correct_answer = }")
 
         if letter not in correct_answer:
             game.heart_object.remove_health(1)
             letter_button.change_button_state(BUTTON_PRESSED_INCORRECT)
             self.wrong_letter_animation()
-            wrong_letter_sound.play()
+            play_sound(wrong_letter_sound)
             if game.heart_object.get_health() <= 0:
                 game.game_lost()
             return
         
         self.correct_letter_animation()
-        correct_letter_sound.play()
+        play_sound(correct_letter_sound)
         letter_button.change_button_state(BUTTON_PRESSED_CORRECT)
     
         for letter in correct_answer:
@@ -489,7 +593,7 @@ class AnswerObject(TextObject):
             else:
                 guessed_string += letter
 
-        print(f"{guessed_string = }")
+        #print(f"{guessed_string = }")
         self.draw_text = guessed_string
 
         if guessed_string == correct_answer:
@@ -509,11 +613,12 @@ class ButtonObject(GameObject):
         raise NotImplementedError
 
 class MenuButton(ButtonObject):
-    def __init__(self, id, surface_pressed: pygame.Surface, surface_unpressed: pygame.Surface, rect, button_function, button_menu_pointer) -> None:
+    def __init__(self, id, surface_pressed: pygame.Surface, surface_unpressed: pygame.Surface, rect, button_function, button_menu_pointer, sound = None) -> None:
         super().__init__(id)
         self.rect = rect
         self.button_function = button_function
         self.button_menu_pointer = button_menu_pointer
+        self.sound = sound
         self.button_pressed_timer = 500
         self.button_pressed_last_tick = 0
         self.image_list = {
@@ -530,9 +635,14 @@ class MenuButton(ButtonObject):
                 self._update_surface()
 
     def activate(self):
-        self.button_function(self.button_menu_pointer)
+        if self.button_menu_pointer:
+            self.button_function(self.button_menu_pointer)
+        else:
+            self.button_function()
         self.state = BUTTON_PRESSED
         self.button_pressed_last_tick = pygame.time.get_ticks()
+        if self.sound:
+            play_sound(self.sound)
         self._update_surface()
         
     def _update_surface(self):
@@ -548,6 +658,26 @@ class MenuButton(ButtonObject):
             return
         if self.surface is not None and self.rect is not None:
             screen.blit(self.surface, self.rect)
+
+class VolumeButton(ButtonObject):
+    def __init__(self, id, surface_list: List[pygame.Surface], rect, button_function, button_sound = None) -> None:
+        super().__init__(id)
+        self.rect = rect
+        self.button_function = button_function
+        self.button_sound = button_sound
+        self.image_list = cycle([
+            surface_list[0].copy(),
+            surface_list[1].copy(),
+            surface_list[2].copy(),
+            surface_list[3].copy()
+        ])
+        self.surface = next(self.image_list)
+
+    def activate(self):
+        self.surface = next(self.image_list)
+        self.button_function()
+        if self.button_sound:
+            play_sound(self.button_sound)
 
 class LetterButton(ButtonObject):
     def __init__(self, id, letter, font: pygame.font.Font) -> None:
@@ -569,7 +699,7 @@ class LetterButton(ButtonObject):
             BUTTON_UNPRESSED: 255,
             BUTTON_PRESSED_CORRECT: 150,
             BUTTON_PRESSED_INCORRECT: 100
-            }
+        }
 
         self._update_surface()
 
@@ -579,20 +709,18 @@ class LetterButton(ButtonObject):
 
     def _update_surface(self):
         self.background_image = self.image_list[self.state]
-        self.letter_surface = self.font.render(self.letter, True, self.color)
         letter_surface_rect = self.letter_surface.get_rect()
         background_image_center = self.background_image.get_rect().center
         letter_surface_rect.center = (background_image_center[0], background_image_center[1] - 2) # It looks like letters are bit off center, lifting them up by few pixels
         self.surface = self.background_image
 
         self.surface.blit(self.letter_surface, letter_surface_rect)
-
         self.surface.set_alpha(self.pressed_alpha[self.state])
 
     def activate(self):
-        game.answer.check_letter(self.letter)
+        game.answer_object.check_letter(self.letter)
 
-class Score(TextObject):
+class ScoreObject(TextObject):
     def __init__(self, id, font: Font, color=None) -> None:
         super().__init__(id, font, color)
         self.score = 0
@@ -639,84 +767,112 @@ def read_wordlist(file_name):
 
     return wordlist
 
+def play_sound(sound_to_play: pygame.mixer.Sound):
+    #[pygame.mixer.Sound.stop(sound) for sound in sound_list if sound != sound_to_play]
+    pygame.mixer.Sound.play(sound_to_play)
+    #sound_to_play.play()
+
+def stop_sounds():
+    [pygame.mixer.Sound.stop(sound) for sound in sound_list]
+
+def change_volume(volume):
+    [pygame.mixer.Sound.set_volume(sound, volume) for sound in sound_list]
+
 def menu_action(event, game_state):
     event_key = event.key
-    if event_key == pygame.K_ESCAPE and game_state == PLAY_MENU:
-        back_button.activate()
-        return True
-    if event_key == pygame.K_RETURN and game_state == MAIN_MENU:
-        start_button.activate()
-        return True
-    if event_key == pygame.K_RETURN and game_state == SCORE_MENU and game.game_ended == GAME_WON:
-        next_button.activate()
-        return True
-    if event_key == pygame.K_RETURN and game_state == SCORE_MENU and game.game_ended == GAME_LOST:
-        try_again_button.activate()
-        return True
+    if event_key == pygame.K_ESCAPE: # Like back button
+        if game_state == PLAY_MENU:
+            back_button.activate()
+            return True
+    elif (event_key == pygame.K_RETURN or event_key == pygame.K_SPACE): # Like continue button
+        if game_state == START_MENU:
+            start_button.activate()
+            return True
+        if game_state == SCORE_MENU and game.game_ended == GAME_WON:
+            next_button.activate()
+            return True
+        if game_state == SCORE_MENU and game.game_ended == GAME_LOST:
+            try_again_button.activate()
+            return True
     
     return False
 
 async def main():
-    list_of_words = read_wordlist(wordlist_file)
-    game.set_word_selection(list_of_words)
 
-    game.input_frozen = False
+    game.unfreeze_input()
 
-    running = True
+    running = 1
+
+    total_time = 0
+    loop_count = 0
 
     while running:
+        loop_start_time = time.time()
+        
+        # Measure keydown time
+        event_start_time = time.time()
         events = pygame.event.get()
-        mousepos = pygame.mouse.get_pos()
         for event in events:
+
             if event.type == pygame.QUIT:
-                running = False
+                running = 0
 
-            if event.type == pygame.VIDEORESIZE:
-                game.reposition_objects(screen.get_size())
-
-            if game.input_frozen: # I want to introduce short pause so people don't accidentally continue after pressing multiple buttons at end of the game
+            elif game.input_frozen: # inputs frozen during transition
                 continue
 
-            if event.type == pygame.KEYDOWN:
-                event_key = event.key
-
+            elif event.type == pygame.KEYDOWN:
                 if not menu_action(event, game.current_menu):
+                    event_key = event.key
                     if game.current_menu == PLAY_MENU:
                         try:
                             key_upper = chr(event_key).upper()
-                            if key_upper in string.ascii_uppercase:
-                                    letter_button = game.get_letter_button(key_upper)
-                                    if letter_button is not None:
-                                        letter_button.activate()
+                            letter_button = game.get_letter_button(key_upper)
+                            if letter_button is not None:
+                                letter_button.activate()
                         except:
-                            print(f"Invalid {event_key = }")
+                            pass
 
-            
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
+                    mousepos = pygame.mouse.get_pos()
                     list_of_objects = game.get_objects(BUTTON_OBJECT_TYPE)
                     if list_of_objects is not None:
-                        for object in game.get_objects(BUTTON_OBJECT_TYPE):
+                        for object in list_of_objects:
                             if object.rect.collidepoint(mousepos):
                                 object.activate()
+            
+        # Measure keydown time
+        event_time = time.time() - event_start_time
 
         screen.fill(BACKGROUND_COLOR)
 
         score_menu_effects.update()
         score_menu_effects.draw(screen)
 
+        game_update_time_start = time.time()
         game.update()
+        game_update_time = time.time() - game_update_time_start
+        game_draw_time_start = time.time()
         game.draw(screen)
+        game_draw_time = time.time() - game_draw_time_start
 
         pygame.display.flip()
-
+    
         clock.tick(TICK_SPEED)
 
-        await asyncio.sleep(0)
+        loop_time = time.time() - loop_start_time
+        total_time += loop_time
+        loop_count += 1
+        #print(f"Average Loop Time: {total_time / loop_count}, Loop Time: {loop_time:.6f}, Event Time: {event_time:.6f}, Game Draw Time: {game_draw_time:.6f}, Game Update Time: {game_update_time:.6f}")
+
+        await asyncio.sleep(0.0000001)
 
 if __name__ == "__main__":
+    buffer = 2**12 # 2**12 = 4096'
+    #frequency = 24000
+    frequency = 44100
+    pygame.mixer.pre_init(frequency=frequency, buffer=buffer)
     pygame.init()
-    pygame.mixer.init(buffer=1024)
     
     screen_size_x, screen_size_y = (1024, 768)
 
@@ -727,7 +883,7 @@ if __name__ == "__main__":
     pygame.display.set_caption(f"Play {game_name}")
 
     IMAGE_FOLDER = 'images'
-    icon_image = pygame.image.load("favicon.png").convert_alpha()
+    icon_image = pygame.image.load("favicon.png").convert()
     pygame.display.set_icon(icon_image)
 
     # display_info = pygame.display.Info()
@@ -739,18 +895,32 @@ if __name__ == "__main__":
     # Game sounds
     SOUND_FOLDER = 'sounds'
 
-    correct_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "correct_letter_sound.ogg"))
-    wrong_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "wrong_letter_sound.ogg"))
+    correct_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "correct_letter_sound.wav"))
+    wrong_letter_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "wrong_letter_sound.wav"))
+    start_game_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "start_game_sound.wav"))
+    round_win_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "round_win_sound.wav"))
+    round_lose_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "round_lose_sound.wav"))
+    back_button_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "back_button_sound.wav"))
+    volume_change_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "volume_change_sound.wav"))
+    new_round_sound = pygame.mixer.Sound(os.path.join(SOUND_FOLDER, "new_round_sound.wav"))
 
-    TICK_SPEED = 60
+    sound_list: List[pygame.mixer.Sound] = []
+    sound_list.append(correct_letter_sound)
+    sound_list.append(wrong_letter_sound)
+    sound_list.append(start_game_sound)
+    sound_list.append(round_win_sound)
+    sound_list.append(round_lose_sound)
+    sound_list.append(back_button_sound)
+    sound_list.append(volume_change_sound)
+    sound_list.append(new_round_sound)
+
 
     # gamestates
     PLAY_MENU = 'play_menu_state'
-    MAIN_MENU = 'main_menu_state'
+    START_MENU = 'main_menu_state'
     SCORE_MENU = 'score_menu_state'
 
     LIGHT_BLUE_COLOR = (138, 160, 242)
-    #CORRECT_COLOR = (16, 140, 40)
     CORRECT_COLOR = (0, 93, 69)
     WRONG_COLOR = (200, 50, 25)
     BLACK_COLOR = (0, 0, 0)
@@ -806,7 +976,6 @@ if __name__ == "__main__":
     game_menu_y_size = 100
     game_menu_scale = 1 / (logo_y_size / game_menu_y_size)
     game_menu_logo_scaled = pygame.transform.rotozoom(oprimagazine_logo_smallest, 0, game_menu_scale)
-
     
     game_over_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_over_text.png")).convert_alpha()
     game_over_text_scaled = pygame.transform.smoothscale(game_over_text, game_over_text.get_size())
@@ -858,6 +1027,21 @@ if __name__ == "__main__":
 
     letter_button_size = LETTER_BUTTON_FONT_SIZE * 2
 
+    volume_full = pygame.image.load(os.path.join(IMAGE_FOLDER, "volume_icon_full.png")).convert_alpha()
+    volume_button_size = volume_full.get_size()
+    volume_scale = (back_button_unpressed_scaled.get_size()[1] / volume_button_size[1]) / 1.4
+    volume_new_size = (volume_button_size[0] * volume_scale, volume_button_size[1] * volume_scale)
+    volume_full_scaled = pygame.transform.smoothscale(volume_full, volume_new_size)
+
+    volume_half = pygame.image.load(os.path.join(IMAGE_FOLDER, "volume_icon_half.png")).convert_alpha()
+    volume_half_scaled = pygame.transform.smoothscale(volume_half, volume_new_size)
+
+    volume_low = pygame.image.load(os.path.join(IMAGE_FOLDER, "volume_icon_low.png")).convert_alpha()
+    volume_low_scaled = pygame.transform.smoothscale(volume_low, volume_new_size)
+
+    volume_muted = pygame.image.load(os.path.join(IMAGE_FOLDER, "volume_icon_muted.png")).convert_alpha()
+    volume_muted_scaled = pygame.transform.smoothscale(volume_muted, volume_new_size)
+
     BUTTON_UNPRESSED = 0
     BUTTON_PRESSED_CORRECT = 1 # for letter buttons
     BUTTON_PRESSED_INCORRECT = 2 # for letter buttons
@@ -875,6 +1059,7 @@ if __name__ == "__main__":
 
     wordlist_file = "wordlist.txt"
 
+    TICK_SPEED = 60
     clock = pygame.time.Clock()
     
     PAUSE_AFTER_WIN_TIMER = pygame.USEREVENT + 1
@@ -882,9 +1067,10 @@ if __name__ == "__main__":
     TRANSITION_IN_TIMER = pygame.USEREVENT + 2
     TRANSITION_OUT_TIMER = pygame.USEREVENT + 3
 
+    NO_TRANSITION = -1
     TRANSITION_IN = 0
     TRANSITION_OUT = 1
-    NO_TRANSITION = -1
+    SCORE_SCREEN_DELAY = 2
 
     NO_LETTER_ANIMATION = -1
     CORRECT_LETTER_ANIMATION = 0
@@ -899,11 +1085,11 @@ if __name__ == "__main__":
     SCORE_ID = 'score'
 
     answer_object = AnswerObject(ANSWER_ID, ANSWER_FONT, ANSWER_FONT_COLOR)
-    score_object = Score(SCORE_ID, SCORE_FONT, SCORE_FONT_COLOR)
+    score_object = ScoreObject(SCORE_ID, SCORE_FONT, SCORE_FONT_COLOR)
 
     heart_object = HeartObject(HEART_ID, heart_full_scaled, heart_half_scaled, heart_empty_scaled)
 
-    game = Game(answer_object, heart_object, score_object)
+    game = Game(screen, answer_object, heart_object, score_object)
 
     START_BUTTON_ID = 'start_button'
     BACK_BUTTON_ID = 'back_button'
@@ -911,6 +1097,7 @@ if __name__ == "__main__":
     TRY_AGAIN_BUTTON_ID = 'try_again_button'
     LOGO_MAIN_ID = 'logo_main'
     LOGO_GAME_ID = 'logo_game'
+    VOLUME_BUTTON_ID = 'volume_button'
     LOGO_BACKGROUND_ID = 'logo_background'
     GAME_OVER_ID = 'game_over'
     YOU_WIN_ID = 'you_win'
@@ -918,22 +1105,22 @@ if __name__ == "__main__":
     start_game_scaled_rect = start_game_unpressed_scaled.get_rect()
     start_button_function = game.go_to_menu
     start_button_menu_pointer = PLAY_MENU
-    start_button = MenuButton(START_BUTTON_ID, start_game_pressed_scaled, start_game_unpressed_scaled, start_game_scaled_rect, start_button_function, start_button_menu_pointer)
+    start_button = MenuButton(START_BUTTON_ID, start_game_pressed_scaled, start_game_unpressed_scaled, start_game_scaled_rect, start_button_function, start_button_menu_pointer, start_game_sound)
     
     back_button_scaled_rect = back_button_unpressed_scaled.get_rect()
     back_button_function = game.go_to_menu
-    back_button_menu_pointer = MAIN_MENU
-    back_button = MenuButton(BACK_BUTTON_ID, back_button_pressed_scaled, back_button_unpressed_scaled, back_button_scaled_rect, back_button_function, back_button_menu_pointer)
+    back_button_menu_pointer = START_MENU
+    back_button = MenuButton(BACK_BUTTON_ID, back_button_pressed_scaled, back_button_unpressed_scaled, back_button_scaled_rect, back_button_function, back_button_menu_pointer, back_button_sound)
     
     next_button_scaled_rect = next_button_unpressed_scaled.get_rect()
     next_button_function = game.go_to_menu
     next_button_menu_pointer = PLAY_MENU
-    next_button = MenuButton(NEXT_BUTTON_ID, next_button_pressed_scaled, next_button_unpressed_scaled, next_button_scaled_rect, next_button_function, next_button_menu_pointer)
+    next_button = MenuButton(NEXT_BUTTON_ID, next_button_pressed_scaled, next_button_unpressed_scaled, next_button_scaled_rect, next_button_function, next_button_menu_pointer, new_round_sound)
     
     try_again_button_scaled_rect = try_again_button_unpressed_scaled.get_rect()
     try_again_button_function = game.go_to_menu
     try_again_button_menu_pointer = PLAY_MENU
-    try_again_button = MenuButton(TRY_AGAIN_BUTTON_ID, try_again_button_pressed_scaled, try_again_button_unpressed_scaled, try_again_button_scaled_rect, try_again_button_function, try_again_button_menu_pointer)
+    try_again_button = MenuButton(TRY_AGAIN_BUTTON_ID, try_again_button_pressed_scaled, try_again_button_unpressed_scaled, try_again_button_scaled_rect, try_again_button_function, try_again_button_menu_pointer, new_round_sound)
 
     logo_main_image = ImageObject(LOGO_MAIN_ID, main_menu_logo_scaled)
     
@@ -948,20 +1135,42 @@ if __name__ == "__main__":
     game_over_object = ImageObject(GAME_OVER_ID, game_over_text_scaled)
     you_win_object = ImageObject(YOU_WIN_ID, you_win_text_scaled)
 
-    game.add_object(MAIN_MENU, start_button)
-    game.add_object(MAIN_MENU, logo_main_image)
-    game.add_object(MAIN_MENU, logo_game_button)
+    FULL_VOLUME = 2
+    HALF_VOLUME = 1
+    LOW_VOLUME = 0
+    NO_VOLUME = -1
+
+    volume_button_scaled_rect = volume_full_scaled.get_rect()
+    volume_button_function = game.cycle_volume
+    volume_button = VolumeButton(VOLUME_BUTTON_ID, [volume_full_scaled, volume_half_scaled, volume_low_scaled,volume_muted_scaled], volume_button_scaled_rect, volume_button_function, volume_change_sound)
+
+    game.add_object(START_MENU, start_button)
+    game.add_object(START_MENU, logo_main_image)
+    game.add_object(START_MENU, logo_game_button)
+    game.add_object(START_MENU, volume_button)
+
+    game.add_object(PLAY_MENU, volume_button)
     game.add_object(PLAY_MENU, logo_game_button)
     game.add_object(PLAY_MENU, back_button)
     game.add_object(PLAY_MENU, game_logo_no_text_object)
+
     game.add_object(SCORE_MENU, next_button)
     game.add_object(SCORE_MENU, try_again_button)
     game.add_object(SCORE_MENU, game_over_object)
     game.add_object(SCORE_MENU, you_win_object)
+    game.add_object(SCORE_MENU, volume_button)
 
     game.reposition_objects((screen_size_x, screen_size_y))
 
     score_menu_effects = EffectController()
     score_menu_effects.add_effect(Fireworks(screen))
+
+    pygame.event.set_allowed([
+        pygame.MOUSEBUTTONDOWN,
+        pygame.MOUSEBUTTONUP,
+        pygame.KEYDOWN,
+        pygame.KEYUP,
+        pygame.QUIT]
+        )
 
     asyncio.run(main())

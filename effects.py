@@ -5,6 +5,7 @@ import random
 from typing import List, Dict
 import math
 from itertools import cycle
+import time
 
 random.seed()
 
@@ -81,8 +82,8 @@ class Fireworks(Effect):
         super().__init__(screen)
         self.firework_colors = [BLACK_COLOR, MAIN_OKRA_COLOR, MAIN_PURPLE_COLOR]
         self.flash_start_alpha = 25
-        self.max_speed = 9
-        self.min_speed = 6
+        self.max_speed = 9 * 2 # double speed works on pygbag better
+        self.min_speed = 6 * 2 # double speed works on pygbag better
         self.max_effects = 3
         self.max_lifetime = 1250
         self.min_lifetime = 750
@@ -96,6 +97,7 @@ class Fireworks(Effect):
         self.explosion_lifetime = 1500
         self.explosion_object: Explosion = Explosion(self.screen, self.explosion_lifetime)
         self.explosion_object.init_particles()
+        self.last_update = 0
 
     def new_instance(self):
         x_padding = 100
@@ -107,6 +109,9 @@ class Fireworks(Effect):
         self.instances.append(new_firework)
 
     def update(self):
+        current_time = time.time()
+        delta_time = current_time - self.last_update
+        self.last_update = current_time
         ticks = pygame.time.get_ticks()
         if len(self.instances) < self.max_effects and ticks - self.last_launch >= self.next_launch:
             self.new_instance()

@@ -56,8 +56,6 @@ Hijinks
 Blunder
 Street
 Kitten
-body
-gym
 Escapes
 Oddball
 Style
@@ -262,7 +260,6 @@ exercise
 Catnip
 Bawling
 memoir
-bet
 Feud
 magazine
 Ostrich
