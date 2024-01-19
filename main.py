@@ -471,7 +471,7 @@ class AnswerObject(TextObject):
         
     def _update_surface(self):
         letter_size_x, letter_size_y = self.font.size('_')
-        letter_x_spacing = 0
+        letter_x_spacing = 8
         x_margin = (letter_size_x * (1 + self.correct_letter_animation_scale)) / 2
         word_surface = pygame.Surface((x_margin * 2 + (letter_size_x + letter_x_spacing) * len(self.draw_text), letter_size_y * (1 + self.correct_letter_animation_scale)), pygame.SRCALPHA)
         elapsed_time = 0
@@ -515,7 +515,7 @@ class AnswerObject(TextObject):
             
             finished_image = scaled_image if scaled_image else self.letter_dict[str(index)]['surface']
             finished_image_rect = finished_image.get_rect()
-            finished_image_rect.center = (x_margin + letter_size_x / 2 + letter_size_x * index, word_surface.get_size()[1] / 2)
+            finished_image_rect.center = (x_margin + letter_size_x / 2 + (letter_size_x + letter_x_spacing) * index, word_surface.get_size()[1] / 2)
             word_surface.blit(finished_image, finished_image_rect)
 
         temp_rect = word_surface.get_rect()
