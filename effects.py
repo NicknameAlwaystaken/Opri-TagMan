@@ -82,8 +82,8 @@ class Fireworks(Effect):
         super().__init__(screen)
         self.firework_colors = [BLACK_COLOR, MAIN_OKRA_COLOR, MAIN_PURPLE_COLOR]
         self.flash_start_alpha = 25
-        self.max_speed = 9 * 2 # double speed works on pygbag better
-        self.min_speed = 6 * 2 # double speed works on pygbag better
+        self.max_speed = 9
+        self.min_speed = 6
         self.max_effects = 3
         self.max_lifetime = 1250
         self.min_lifetime = 750
