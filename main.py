@@ -143,6 +143,7 @@ class Game:
         return None
 
     def go_to_menu(self, menu):
+        self.freeze_input()
         self.transitioning_to = menu
         self.menu_transitioning_state = TRANSITION_IN
         self.start_menu_transition()
@@ -166,7 +167,6 @@ class Game:
             
     def score_screen_delay_finish(self):
         self.go_to_menu(SCORE_MENU)
-        self.freeze_input()
 
     def start_menu_transition(self):
         self.transition_screen.fill(TRANSITION_SCREEN_COLOR)
@@ -444,7 +444,7 @@ class TextObject(NonInteractiveObject):
 
     def _update_surface(self):
         color = self.temp_color if self.temp_color is not None else self.color
-        self.surface = self.font.render(self.text, True, color)
+        self.surface = Font.render(self.font, self.text, True, color)
         temp_rect = self.surface.get_rect()
         temp_rect.center = self.rect.center if self.rect else (0, 0)
         self.rect = temp_rect
@@ -501,7 +501,7 @@ class AnswerObject(TextObject):
         color = self.temp_color if self.temp_color is not None else self.color
         for letter_values in self.letter_dict.values():
             if letter_values['letter'] != self.previous_letter_guessed and letter_values['color'] != color:
-                letter_image = self.font.render(letter_values['letter'], True, color)
+                letter_image = Font.render(self.font, letter_values['letter'], True, color)
                 letter_values['surface'] = letter_image
 
         for index, letter in enumerate(self.draw_text):
@@ -515,7 +515,7 @@ class AnswerObject(TextObject):
                     color = self.temp_color if self.temp_color is not None else self.color
 
             if self.letter_dict[str(index)]['letter'] == '_':
-                letter_image = self.font.render(letter, True, color)
+                letter_image = Font.render(self.font, letter, True, color)
                 self.letter_dict[str(index)]['surface'] = letter_image
                 self.letter_dict[str(index)]['letter'] = letter
                 self.letter_dict[str(index)]['color'] = color
@@ -868,7 +868,7 @@ async def main():
         loop_count += 1
         #print(f"Average Loop Time: {total_time / loop_count}, Loop Time: {loop_time:.6f}, Event Time: {event_time:.6f}, Game Draw Time: {game_draw_time:.6f}, Game Update Time: {game_update_time:.6f}")
 
-        await asyncio.sleep(0.001)
+        await asyncio.sleep(0)
 
 if __name__ == "__main__":
     buffer = 2**12 # 2**12 = 4096'
@@ -953,7 +953,6 @@ if __name__ == "__main__":
     BUTTON_OBJECT_TYPE = "button"
     NON_INTERACTIVE_OBJECT_TYPE = "non_interactive"
 
-    DEFAULT_FONT_SIZE = 50
     LETTER_BUTTON_FONT_SIZE = 40
     ANSWER_FONT_SIZE = 75
     SCORE_FONT_SIZE = 50
@@ -965,7 +964,6 @@ if __name__ == "__main__":
     ARIAL_BLACK = os.path.join(FONT_FOLDER, 'ariblk.ttf')
     CONSOLAS_BOLD = os.path.join(FONT_FOLDER, 'consolab.ttf')
 
-    DEFAULT_FONT = Font(FONT_FILE, DEFAULT_FONT_SIZE)
     LETTER_BUTTON_FONT = Font(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
     ANSWER_FONT = Font(CONSOLAS_BOLD, ANSWER_FONT_SIZE)
     ANSWER_FONT.set_bold(True)
