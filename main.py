@@ -608,10 +608,30 @@ class ButtonObject(GameObject):
         super().__init__(id)
         self.object_type = BUTTON_OBJECT_TYPE
         self.button_function = None
-        self.state = 0
+        self.button_state = BUTTON_UNPRESSED
+        self.previous_state = BUTTON_UNPRESSED
+        self.is_animating = False
+        self.animate_center = None
+        self.animate_step = 0
+        self.animate_time = 50
+        self.max_animate_steps = 60 * (self.animate_time / 1000)
+        self.surface_min_scale = 0.9
 
     def activate(self):
         raise NotImplementedError
+    
+    def update(self):
+        if self.is_animating:
+            self._update_surface()
+            pressed_animation(self)
+    
+    def draw(self, screen):
+        if self.surface is not None and self.rect is not None:
+            screen.blit(self.surface, self.rect)
+            
+    def _update_surface(self):
+        raise NotImplementedError
+
 
 class MenuButton(ButtonObject):
     def __init__(self, id, surface_pressed: pygame.Surface, surface_unpressed: pygame.Surface, rect, button_function, button_menu_pointer = None) -> None:
@@ -625,37 +645,39 @@ class MenuButton(ButtonObject):
             BUTTON_UNPRESSED: surface_unpressed.copy(),
             BUTTON_PRESSED: surface_pressed.copy()
             }
-        self.surface = self.image_list[self.state]
+        self.surface = self.image_list[self.button_state]
 
     def update(self):
-        if self.state == BUTTON_PRESSED:
+        if self.button_state == BUTTON_PRESSED:
             ticks = pygame.time.get_ticks() - self.button_pressed_last_tick
             if ticks >= self.button_pressed_timer:
-                self.state = BUTTON_UNPRESSED
+                self.button_state = BUTTON_UNPRESSED
                 self._update_surface()
+        super().update()
 
     def activate(self):
         if self.button_menu_pointer:
             self.button_function(self.button_menu_pointer)
         else:
             self.button_function()
-        self.state = BUTTON_PRESSED
+        self.button_state = BUTTON_PRESSED
+        self.is_animating = True
+        self.animate_step = 0
         self.button_pressed_last_tick = pygame.time.get_ticks()
         self._update_surface()
         
     def _update_surface(self):
-        self.surface = self.image_list[self.state]
+        self.surface = self.image_list[self.button_state]
         
     def change_button_state(self, state_number): # 0 for unpressed state, 1 for correct pressed, 2 for incorrect pressed
-        self.state = state_number
+        self.button_state = state_number
 
     def draw(self, screen: pygame.Surface):
         if self.id == NEXT_BUTTON_ID and game.game_ended != GAME_WON:
             return
         if self.id == TRY_AGAIN_BUTTON_ID and game.game_ended != GAME_LOST:
             return
-        if self.surface is not None and self.rect is not None:
-            screen.blit(self.surface, self.rect)
+        super().draw(screen)
 
 class LetterButton(ButtonObject):
     def __init__(self, id, letter, font: Font) -> None:
@@ -666,7 +688,7 @@ class LetterButton(ButtonObject):
             BUTTON_PRESSED_CORRECT: letter_button_pressed_correct_scaled.copy(),
             BUTTON_PRESSED_INCORRECT: letter_button_pressed_incorrect_scaled.copy()
             }
-        self.background_image = self.image_list[self.state]
+        self.background_image = self.image_list[self.button_state]
         self.letter: str = letter
         self.font = font
         self.color = LETTER_BUTTON_COLOR
@@ -682,18 +704,20 @@ class LetterButton(ButtonObject):
         self._update_surface()
 
     def change_button_state(self, state_number): # 0 for unpressed state, 1 for correct pressed, 2 for incorrect pressed
-        self.state = state_number
+        self.button_state = state_number
+        self.is_animating = True
+        self.animate_step = 0
         self._update_surface()
 
     def _update_surface(self):
-        self.background_image = self.image_list[self.state]
+        self.background_image = self.image_list[self.button_state]
         letter_surface_rect = self.letter_surface.get_rect()
         background_image_center = self.background_image.get_rect().center
         letter_surface_rect.center = (background_image_center[0], background_image_center[1])
         self.surface = self.background_image
 
         self.surface.blit(self.letter_surface, letter_surface_rect)
-        self.surface.set_alpha(self.pressed_alpha[self.state])
+        self.surface.set_alpha(self.pressed_alpha[self.button_state])
 
     def activate(self):
         game.answer_object.check_letter(self.letter)
@@ -711,6 +735,19 @@ class ScoreObject(TextObject):
     def add_streak(self, difficulty_name: str):
         self.streak += 1
         self.set_text(f"{difficulty_name.upper()}" + self.text_template + str(self.streak))
+
+def pressed_animation(self: ButtonObject):
+    scale_amount = (1 - self.surface_min_scale) / self.max_animate_steps
+    self.surface = pygame.transform.smoothscale_by(self.surface, 1 - scale_amount * self.animate_step)
+    temp_center = self.rect.center
+    self.rect = self.surface.get_rect()
+    self.rect.center = temp_center
+    self.animate_step += 1
+    if self.animate_step > self.max_animate_steps:
+        self.is_animating = False
+        self._update_surface()
+        self.rect = self.surface.get_rect()
+        self.rect.center = temp_center
 
 def create_keyboard_zone(screen_size):
     screen_size_x, screen_size_y = screen_size
@@ -763,6 +800,7 @@ def menu_action(event, game_state):
             return True
     
     return False
+
 
 async def main():
 
