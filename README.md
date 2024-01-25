@@ -48,7 +48,7 @@ Embark on a simple, but fun, interactive word-finding adventure with TagMan! Are
 
 # Score Menu
 
-## Win Screen
+## Win Screen (includes fireworks animation)
 
 ![Alt text](win_screen_1.png)
 
