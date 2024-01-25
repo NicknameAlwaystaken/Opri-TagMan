@@ -18,10 +18,6 @@ class Game:
         self.score_object = score_object
         self.input_frozen = False
         self.difficulty_mode = None
-        self.difficulty_score = {
-            EASY_MODE: 1,
-            HARD_MODE: 4
-        }
         self.default_freeze_time = 400
         self.freeze_time = 400 # milliseconds
         self.freeze_time_start = 0
@@ -54,7 +50,7 @@ class Game:
         self.set_word_selection(list_of_words)
 
         self.create_letter_buttons()
-        self.score_object.set_score(0)
+        self.score_object.reset_streak("")
         self.heart_object.set_max_health(8)
         self.answer_object.set_answer(random.choice(self.word_list))
 
@@ -146,6 +142,9 @@ class Game:
         return None
 
     def go_to_menu(self, menu):
+        if menu == START_MENU:
+            self.score_object.reset_streak(self.difficulty_mode)
+
         self.freeze_input()
         self.transitioning_to = menu
         self.menu_transitioning_state = TRANSITION_IN
@@ -313,13 +312,14 @@ class Game:
             self.freeze_time = delay
 
     def game_won(self):
-        self.score_object.add_score(self.difficulty_score[self.difficulty_mode])
+        self.score_object.add_streak(self.difficulty_mode)
         self.game_ended = GAME_WON
         self.freeze_input(self.scorescreen_delay_time + 250)
         self.scorescreen_delay_start_time = pygame.time.get_ticks()
         self.menu_transitioning_state = SCORE_SCREEN_DELAY
 
     def game_lost(self):
+        self.score_object.reset_streak(self.difficulty_mode)
         self.game_ended = GAME_LOST
         self.freeze_input(self.scorescreen_delay_time + 250)
         self.scorescreen_delay_start_time = pygame.time.get_ticks()
@@ -701,16 +701,16 @@ class LetterButton(ButtonObject):
 class ScoreObject(TextObject):
     def __init__(self, id, font: Font, color=None) -> None:
         super().__init__(id, font, color)
-        self.score = 0
-        self.text_template = f"SCORE: "
+        self.streak = 0
+        self.text_template = f" STREAK: "
 
-    def set_score(self, amount):
-        self.score = amount
-        self.set_text(self.text_template + str(self.score))
+    def reset_streak(self, difficulty_name: str):
+        self.streak = 0
+        self.set_text(f"{difficulty_name.upper()}" + self.text_template + str(self.streak))
 
-    def add_score(self, amount):
-        self.score += amount
-        self.set_text(self.text_template + str(self.score))
+    def add_streak(self, difficulty_name: str):
+        self.streak += 1
+        self.set_text(f"{difficulty_name.upper()}" + self.text_template + str(self.streak))
 
 def create_keyboard_zone(screen_size):
     screen_size_x, screen_size_y = screen_size
