@@ -17,10 +17,15 @@ class Game:
         self.heart_object = heart_object
         self.score_object = score_object
         self.input_frozen = False
+        self.difficulty_mode = None
+        self.difficulty_score = {
+            EASY_MODE: 1,
+            HARD_MODE: 4
+        }
         self.default_freeze_time = 400
         self.freeze_time = 400 # milliseconds
         self.freeze_time_start = 0
-        self.word_list = []
+        self.word_list: List[str] = []
         self.game_ended = NOT_ENDED
         self.guessed_letters = []
         self.current_menu = START_MENU
@@ -53,6 +58,14 @@ class Game:
         self.heart_object.set_max_health(8)
         self.answer_object.set_answer(random.choice(self.word_list))
 
+    def start_easy_game(self):
+        self.difficulty_mode = EASY_MODE
+        self.go_to_menu(PLAY_MENU)
+
+    def start_hard_game(self):
+        self.difficulty_mode = HARD_MODE
+        self.go_to_menu(PLAY_MENU)
+
     def reposition_objects(self, screen_size):
         self.reposition_menu_objects(screen_size)
         self.reposition_text_objects(screen_size)
@@ -84,8 +97,10 @@ class Game:
 
         for object_list in self.start_menu_objects.values(): # START_MENU
             for object in object_list:
-                if object.id == START_BUTTON_ID:
-                    object.rect.center = screen_size_x // 2, screen_size_y // 3 * 2
+                if object.id == START_EASY_BUTTON_ID:
+                    object.rect.center = screen_size_x // 2 - (start_easy_game_pressed_scaled.get_size()[0] / 2) - (BUTTON_SEPARATION_AMOUNT / 2), screen_size_y // 3 * 2
+                elif object.id == START_HARD_BUTTON_ID:
+                    object.rect.center = screen_size_x // 2 + (start_hard_game_pressed_scaled.get_size()[0] / 2) + (BUTTON_SEPARATION_AMOUNT / 2), screen_size_y // 3 * 2
                 elif object.id == LOGO_MAIN_ID:
                     object.update_rect_center((screen_size_x // 2, screen_size_y // 3 * 1))
 
@@ -163,10 +178,18 @@ class Game:
 
     def start_new_game(self):
         self.game_ended = NOT_ENDED
-        self.answer_object.set_answer(random.choice(self.word_list))
+        new_word = random.choice(self.word_list)
+        self.answer_object.set_answer(new_word)
         self.heart_object.set_max_health(8)
         for object in self.letter_buttons:
             object.change_button_state(BUTTON_UNPRESSED)
+
+        if self.difficulty_mode == EASY_MODE:
+            random_letter = random.choice(new_word)
+            for object in self.letter_buttons:
+                if object.letter.upper() == random_letter.upper():
+                    object.activate()
+
 
     def draw(self, screen: pygame.Surface):
         menu_dict = {}
@@ -290,7 +313,7 @@ class Game:
             self.freeze_time = delay
 
     def game_won(self):
-        self.score_object.add_score(1)
+        self.score_object.add_score(self.difficulty_score[self.difficulty_mode])
         self.game_ended = GAME_WON
         self.freeze_input(self.scorescreen_delay_time + 250)
         self.scorescreen_delay_start_time = pygame.time.get_ticks()
@@ -591,7 +614,7 @@ class ButtonObject(GameObject):
         raise NotImplementedError
 
 class MenuButton(ButtonObject):
-    def __init__(self, id, surface_pressed: pygame.Surface, surface_unpressed: pygame.Surface, rect, button_function, button_menu_pointer) -> None:
+    def __init__(self, id, surface_pressed: pygame.Surface, surface_unpressed: pygame.Surface, rect, button_function, button_menu_pointer = None) -> None:
         super().__init__(id)
         self.rect = rect
         self.button_function = button_function
@@ -666,7 +689,7 @@ class LetterButton(ButtonObject):
         self.background_image = self.image_list[self.state]
         letter_surface_rect = self.letter_surface.get_rect()
         background_image_center = self.background_image.get_rect().center
-        letter_surface_rect.center = (background_image_center[0], background_image_center[1] - 2) # It looks like letters are bit off center, lifting them up by few pixels
+        letter_surface_rect.center = (background_image_center[0], background_image_center[1])
         self.surface = self.background_image
 
         self.surface.blit(self.letter_surface, letter_surface_rect)
@@ -730,7 +753,7 @@ def menu_action(event, game_state):
             return True
     elif (event_key == pygame.K_RETURN or event_key == pygame.K_SPACE): # Like continue button
         if game_state == START_MENU:
-            start_button.activate()
+            start_easy_button.activate()
             return True
         if game_state == SCORE_MENU and game.game_ended == GAME_WON:
             next_button.activate()
@@ -845,15 +868,13 @@ if __name__ == "__main__":
 
     FONT_FOLDER = 'fonts'
 
-    FONT_FILE = os.path.join(FONT_FOLDER, 'MartianMono-VariableFont_wdth,wght.ttf')
+    RUBIKMONO_FONT = os.path.join(FONT_FOLDER, 'RubikMonoOne-Regular.ttf')
+    LIBERATIONMONO_FONT = os.path.join(FONT_FOLDER, "LiberationMono-Bold.ttf")
 
-    ARIAL_BLACK = os.path.join(FONT_FOLDER, 'ariblk.ttf')
-    CONSOLAS_BOLD = os.path.join(FONT_FOLDER, 'consolab.ttf')
-
-    LETTER_BUTTON_FONT = Font(ARIAL_BLACK, LETTER_BUTTON_FONT_SIZE)
-    ANSWER_FONT = Font(CONSOLAS_BOLD, ANSWER_FONT_SIZE)
+    LETTER_BUTTON_FONT = Font(RUBIKMONO_FONT, LETTER_BUTTON_FONT_SIZE)
+    ANSWER_FONT = Font(LIBERATIONMONO_FONT, ANSWER_FONT_SIZE)
     ANSWER_FONT.set_bold(True)
-    SCORE_FONT = Font(ARIAL_BLACK, SCORE_FONT_SIZE)
+    SCORE_FONT = Font(RUBIKMONO_FONT, SCORE_FONT_SIZE)
 
     game_logo_no_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_logo_no_text.png")).convert_alpha()
     scale_amount = (screen_size_x / 1.6) / game_logo_no_text.get_size()[0]
@@ -868,11 +889,13 @@ if __name__ == "__main__":
     game_menu_scale = 1 / (logo_y_size / game_menu_y_size)
     game_menu_logo_scaled = pygame.transform.smoothscale_by(oprimagazine_logo_smallest, game_menu_scale)
     
+    score_screen_text_scale = 0.7
+
     game_over_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "game_over_text.png")).convert_alpha()
-    game_over_text_scaled = pygame.transform.smoothscale(game_over_text, game_over_text.get_size())
+    game_over_text_scaled = pygame.transform.smoothscale_by(game_over_text, score_screen_text_scale)
 
     you_win_text = pygame.image.load(os.path.join(IMAGE_FOLDER, "you_win_text.png")).convert_alpha()
-    you_win_text_scaled = pygame.transform.smoothscale(you_win_text, you_win_text.get_size())
+    you_win_text_scaled = pygame.transform.smoothscale_by(you_win_text, score_screen_text_scale)
     
     HEART_FULL = 2
     HEART_HALF = 1
@@ -886,12 +909,19 @@ if __name__ == "__main__":
     heart_empty = pygame.image.load(os.path.join(IMAGE_FOLDER, "empty_heart.png")).convert_alpha()
     heart_empty_scaled = pygame.transform.smoothscale(heart_empty, heart_size)
     
-    start_game_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "start_button_unpressed.png")).convert_alpha()
-    start_button_size = start_game_unpressed.get_size()
-    start_button_scale = 5
-    start_game_unpressed_scaled = pygame.transform.smoothscale(start_game_unpressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
-    start_game_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "start_button_pressed.png")).convert_alpha()
-    start_game_pressed_scaled = pygame.transform.smoothscale(start_game_pressed, (int(start_button_size[0] / start_button_scale), int(start_button_size[1] / start_button_scale)))
+    start_easy_game_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "easy_button_unpressed.png")).convert_alpha()
+    start_easy_button_size = start_easy_game_unpressed.get_size()
+    start_easy_button_scale = 5
+    start_easy_game_unpressed_scaled = pygame.transform.smoothscale(start_easy_game_unpressed, (int(start_easy_button_size[0] / start_easy_button_scale), int(start_easy_button_size[1] / start_easy_button_scale)))
+    start_easy_game_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "easy_button_pressed.png")).convert_alpha()
+    start_easy_game_pressed_scaled = pygame.transform.smoothscale(start_easy_game_pressed, (int(start_easy_button_size[0] / start_easy_button_scale), int(start_easy_button_size[1] / start_easy_button_scale)))
+
+    start_hard_game_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "hard_button_unpressed.png")).convert_alpha()
+    start_hard_button_size = start_hard_game_unpressed.get_size()
+    start_hard_button_scale = 5
+    start_hard_game_unpressed_scaled = pygame.transform.smoothscale(start_hard_game_unpressed, (int(start_hard_button_size[0] / start_hard_button_scale), int(start_hard_button_size[1] / start_hard_button_scale)))
+    start_hard_game_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "hard_button_pressed.png")).convert_alpha()
+    start_hard_game_pressed_scaled = pygame.transform.smoothscale(start_hard_game_pressed, (int(start_hard_button_size[0] / start_hard_button_scale), int(start_hard_button_size[1] / start_hard_button_scale)))
 
     back_button_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "x_back_button_unpressed.png")).convert_alpha()
     back_button_size = back_button_unpressed.get_size()
@@ -902,7 +932,7 @@ if __name__ == "__main__":
 
     next_button_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "next_button_unpressed.png")).convert_alpha()
     next_button_size = next_button_unpressed.get_size()
-    next_button_scale = 1 / (start_game_unpressed_scaled.get_size()[1] / next_button_size[1])
+    next_button_scale = 1 / (start_easy_game_unpressed_scaled.get_size()[1] / next_button_size[1])
     next_button_unpressed_scaled = pygame.transform.smoothscale(next_button_unpressed, (int(next_button_size[0] / next_button_scale), int(next_button_size[1] / next_button_scale)))
 
     next_button_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "next_button_pressed.png")).convert_alpha()
@@ -910,7 +940,7 @@ if __name__ == "__main__":
 
     try_again_button_unpressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "try_again_button_unpressed.png")).convert_alpha()
     try_again_button_size = try_again_button_unpressed.get_size()
-    try_again_button_scale = 1 / (start_game_unpressed_scaled.get_size()[1] / try_again_button_size[1])
+    try_again_button_scale = 1 / (start_easy_game_unpressed_scaled.get_size()[1] / try_again_button_size[1])
     try_again_button_unpressed_scaled = pygame.transform.smoothscale(try_again_button_unpressed, (int(try_again_button_size[0] / try_again_button_scale), int(try_again_button_size[1] / try_again_button_scale)))
     
     try_again_button_pressed = pygame.image.load(os.path.join(IMAGE_FOLDER, "try_again_button_pressed.png")).convert_alpha()
@@ -965,9 +995,13 @@ if __name__ == "__main__":
 
     heart_object = HeartObject(HEART_ID, heart_full_scaled, heart_half_scaled, heart_empty_scaled)
 
+    EASY_MODE = "easy"
+    HARD_MODE = "hard"
+
     game = Game(screen, answer_object, heart_object, score_object)
 
-    START_BUTTON_ID = 'start_button'
+    START_EASY_BUTTON_ID = 'start_easy_button'
+    START_HARD_BUTTON_ID = 'start_hard_button'
     BACK_BUTTON_ID = 'back_button'
     NEXT_BUTTON_ID = 'next_button'
     TRY_AGAIN_BUTTON_ID = 'try_again_button'
@@ -977,10 +1011,15 @@ if __name__ == "__main__":
     GAME_OVER_ID = 'game_over'
     YOU_WIN_ID = 'you_win'
 
-    start_game_scaled_rect = start_game_unpressed_scaled.get_rect()
-    start_button_function = game.go_to_menu
-    start_button_menu_pointer = PLAY_MENU
-    start_button = MenuButton(START_BUTTON_ID, start_game_pressed_scaled, start_game_unpressed_scaled, start_game_scaled_rect, start_button_function, start_button_menu_pointer)
+    BUTTON_SEPARATION_AMOUNT = 50
+
+    start_easy_game_scaled_rect = start_easy_game_unpressed_scaled.get_rect()
+    start_easy_button_function = game.start_easy_game
+    start_easy_button = MenuButton(START_EASY_BUTTON_ID, start_easy_game_pressed_scaled, start_easy_game_unpressed_scaled, start_easy_game_scaled_rect, start_easy_button_function)
+    
+    start_hard_game_scaled_rect = start_hard_game_unpressed_scaled.get_rect()
+    start_hard_button_function = game.start_hard_game
+    start_hard_button = MenuButton(START_HARD_BUTTON_ID, start_hard_game_pressed_scaled, start_hard_game_unpressed_scaled, start_hard_game_scaled_rect, start_hard_button_function)
     
     back_button_scaled_rect = back_button_unpressed_scaled.get_rect()
     back_button_function = game.go_to_menu
@@ -1011,7 +1050,8 @@ if __name__ == "__main__":
     you_win_object = ImageObject(YOU_WIN_ID, you_win_text_scaled)
 
 
-    game.add_object(START_MENU, start_button)
+    game.add_object(START_MENU, start_easy_button)
+    game.add_object(START_MENU, start_hard_button)
     game.add_object(START_MENU, logo_main_image)
     game.add_object(START_MENU, logo_game_button)
 
